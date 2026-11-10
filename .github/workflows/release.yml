@@ -1,0 +1,58 @@
+name: Release
+
+# Publish a release on github.com (Releases, Draft a new release, tag v0.2.1).
+# This workflow then builds, signs and attaches Portunus-win64.zip to it.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write   # needed only to create the release
+
+jobs:
+  build:
+    runs-on: windows-latest
+    environment: release   # optional: add required reviewers in repo settings
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Install locked dependencies
+        run: |
+          python -m pip install --require-hashes -r requirements.lock
+          python -m pip install pyinstaller==6.22.3
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Record repository for the updater
+        env:
+          REPO: ${{ github.repository }}
+        run: python -c "import os,pathlib; pathlib.Path('portunus/_build_info.py').write_text('REPOSITORY = %r\n' % os.environ['REPO'])"
+
+      - name: Build
+        run: >
+          python -m PyInstaller --noconfirm --clean --windowed --name Portunus
+          --add-data "portunus\ui;portunus\ui"
+          --collect-all pymobiledevice3
+          --collect-submodules winrt
+          --hidden-import portunus._build_info
+          portunus\__main__.py
+
+      - name: Package and sign
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          PORTUNUS_SIGNING_KEY: ${{ secrets.PORTUNUS_SIGNING_KEY }}
+        run: python tools/release.py "$env:TAG" dist\Portunus release
+
+      - name: Attach files to the release
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release upload "$env:TAG" --clobber
+          release\Portunus-win64.zip release\portunus-manifest.json release\portunus-manifest.json.sig
