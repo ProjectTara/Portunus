@@ -266,7 +266,13 @@ def apply_update(target: Path, old_pid: int) -> int:
     target = target.resolve()
     backup = target.with_name(target.name + ".old")
     shutil.rmtree(backup, ignore_errors=True)
-    _retry(lambda: os.replace(target, backup))
+    try:
+        _retry(lambda: os.replace(target, backup))
+    except OSError:
+        # Folder locked (open in Explorer, antivirus scan). Nothing changed:
+        # reopen the current version so the user is never left with no app.
+        subprocess.Popen([str(target / EXE_NAME)], cwd=str(target), close_fds=True)
+        return 3
     try:
         shutil.copytree(staged, target)
     except OSError:

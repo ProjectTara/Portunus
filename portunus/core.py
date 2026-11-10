@@ -85,7 +85,10 @@ def explain(exc: BaseException) -> str:
         return str(exc)
     if "in use" in str(exc).lower():
         return "Kamera atau mikrofon iPhone sedang dipakai aplikasi lain. Tutup aplikasi itu, lalu coba lagi."
-    return f"Sambungan gagal ({name}). Cabut kabel, colok lagi, lalu coba lagi."
+    return (
+        f"Sambungan gagal ({name}). Cabut kabel, colok lagi, lalu coba lagi. "
+        "Jika terulang, kirim file %LOCALAPPDATA%\\Portunus\\portunus.log."
+    )
 
 
 class Core:
@@ -255,7 +258,7 @@ class Core:
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
-            log.warning("session failed: %s: %s", type(exc).__name__, exc)
+            log.warning("session failed: %s: %s", type(exc).__name__, exc, exc_info=True)
             self._set("error", explain(exc))
         finally:
             if serve_task is not None and not serve_task.done():

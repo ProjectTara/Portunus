@@ -183,6 +183,53 @@ class StageTests(unittest.TestCase):
                 updater.stage(self.release_for(data))
 
 
+class ApplyUpdateTests(unittest.TestCase):
+    """The helper must never leave the user without a running app."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.tmp, ignore_errors=True))
+        self.target = self.tmp / "Portunus"
+        self.target.mkdir()
+        (self.target / "Portunus.exe").write_bytes(b"old")
+        self.staged = self.tmp / "staged" / "Portunus"
+        self.staged.mkdir(parents=True)
+        (self.staged / "Portunus.exe").write_bytes(b"new")
+        import psutil
+        patches = [
+            mock.patch.object(psutil, "Process", side_effect=psutil.NoSuchProcess(1)),
+            mock.patch.object(updater.sys, "executable", str(self.staged / "Portunus.exe")),
+            mock.patch.object(updater.subprocess, "Popen"),
+            mock.patch.object(updater.time, "sleep"),
+        ]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_success_swaps_and_relaunches(self):
+        self.assertEqual(updater.apply_update(self.target, 1), 0)
+        self.assertEqual((self.target / "Portunus.exe").read_bytes(), b"new")
+        updater.subprocess.Popen.assert_called_once()
+
+    def test_locked_folder_relaunches_old_version(self):
+        with mock.patch.object(updater.os, "replace", side_effect=PermissionError("locked")):
+            self.assertEqual(updater.apply_update(self.target, 1), 3)
+        self.assertEqual((self.target / "Portunus.exe").read_bytes(), b"old")
+        updater.subprocess.Popen.assert_called_once()
+
+    def test_failed_copy_rolls_back(self):
+        with mock.patch.object(updater.shutil, "copytree", side_effect=OSError("disk full")):
+            self.assertEqual(updater.apply_update(self.target, 1), 2)
+        self.assertEqual((self.target / "Portunus.exe").read_bytes(), b"old")
+        updater.subprocess.Popen.assert_called_once()
+
+
+class UiStaticTests(unittest.TestCase):
+    def test_hidden_attribute_wins_over_display_rules(self):
+        css = (Path(__file__).resolve().parent.parent / "portunus" / "ui" / "style.css").read_text()
+        self.assertIn("[hidden] { display: none !important; }", css)
+
+
 class SupportTests(unittest.TestCase):
     def test_source_runs_do_not_self_update(self):
         supported, reason = updater.support()
