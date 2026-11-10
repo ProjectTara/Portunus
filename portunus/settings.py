@@ -47,6 +47,7 @@ SCHEMA: dict[str, tuple[Any, Callable[[Any], Any]]] = {
     "scrollSpeed": (100, _int_range(40, 250)),
     "reflection": (True, _boolean),
     "autoUpdateCheck": (True, _boolean),
+    "allowWifi": (False, _boolean),
 }
 
 

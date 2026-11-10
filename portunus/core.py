@@ -24,6 +24,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from . import wifi
 from .upstream import Upstream
 
 log = logging.getLogger("portunus.core")
@@ -81,7 +82,7 @@ def explain(exc: BaseException) -> str:
     }
     if name in table:
         return table[name]
-    if isinstance(exc, SessionError):
+    if isinstance(exc, (SessionError, wifi.WifiError)):
         return str(exc)
     if "in use" in str(exc).lower():
         return "Kamera atau mikrofon iPhone sedang dipakai aplikasi lain. Tutup aplikasi itu, lalu coba lagi."
@@ -102,6 +103,8 @@ class Core:
         self._session_task: Optional[asyncio.Task] = None
         self._watch_task: Optional[asyncio.Task] = None
         self._names: dict[str, dict[str, Any]] = {}
+        self.allow_wifi = False  # mirrors the user's setting; set by the gateway
+        self.transport = "usb"
 
     # ---- thread / loop plumbing -------------------------------------------
     def _run_loop(self) -> None:
@@ -135,12 +138,21 @@ class Core:
         while True:
             try:
                 found = await asyncio.wait_for(list_devices(), 5)
+                wifi_ids = await asyncio.to_thread(wifi.paired_devices) if self.allow_wifi else {}
                 devices = []
+                on_usb = set()
                 for dev in found:
                     if dev.connection_type != "USB":
                         continue
+                    on_usb.add(dev.serial)
                     info = self._names.get(dev.serial, {})
-                    devices.append({"udid": dev.serial, "name": info.get("name"), "ios": info.get("ios")})
+                    devices.append({"udid": dev.serial, "name": info.get("name"), "ios": info.get("ios"),
+                                    "transport": "usb", "wifiReady": dev.serial in wifi_ids})
+                for udid in wifi_ids:
+                    if udid not in on_usb:
+                        info = self._names.get(udid, {})
+                        devices.append({"udid": udid, "name": info.get("name"), "ios": info.get("ios"),
+                                        "transport": "wifi", "wifiReady": True})
                 self.state.devices = devices
                 self.state.usbmux_ok = True
             except Exception as exc:  # noqa: BLE001
@@ -155,12 +167,28 @@ class Core:
         self.state.message = message
         log.info("phase=%s", phase)
 
-    async def connect(self, udid: str) -> None:
-        if not any(d["udid"] == udid for d in self.state.devices):
+    async def connect(self, udid: str, transport: str = "usb") -> None:
+        if transport == "wifi":
+            if not self.allow_wifi:
+                raise SessionError("Sambungan Wi-Fi belum diizinkan di Pengaturan.")
+            if udid not in await asyncio.to_thread(wifi.paired_devices):
+                raise SessionError("iPhone itu belum diaktifkan untuk Wi-Fi.")
+        elif not any(d["udid"] == udid and d.get("transport") == "usb" for d in self.state.devices):
             raise SessionError("iPhone itu tidak tersambung lewat USB.")
         await self.disconnect()
         self.state.udid = udid
-        self._session_task = asyncio.create_task(self._run_session(udid))
+        self.transport = transport
+        self._session_task = asyncio.create_task(self._run_session(udid, transport))
+
+    async def enable_wifi(self, udid: str) -> None:
+        if not any(d["udid"] == udid and d.get("transport") == "usb" for d in self.state.devices):
+            raise SessionError("Colok iPhone dengan kabel dulu untuk mengaktifkan Wi-Fi.")
+        await wifi.enable(udid)
+
+    async def revoke_wifi(self, udid: str) -> bool:
+        if self.state.udid == udid and self.transport == "wifi" and self.state.phase != "idle":
+            await self.disconnect()
+        return await asyncio.to_thread(wifi.revoke, udid)
 
     async def disconnect(self) -> None:
         task, self._session_task = self._session_task, None
@@ -197,7 +225,9 @@ class Core:
         self._names[udid] = info
         return info
 
-    async def _dial_tunnel(self, udid: str):
+    async def _dial_tunnel(self, udid: str, transport: str = "usb"):
+        if transport == "wifi":
+            return await asyncio.wait_for(wifi.open_tunnel(udid), 45)
         from pymobiledevice3.remote.rsd_tunnel import PreferredRsdTunnel
 
         tunnel = PreferredRsdTunnel(serial=udid, autopair=True)
@@ -209,24 +239,32 @@ class Core:
         services = (getattr(rsd, "peer_info", None) or {}).get("Services", {})
         return DISPLAY_SERVICE in services
 
-    async def _run_session(self, udid: str) -> None:
+    async def _run_session(self, udid: str, transport: str = "usb") -> None:
         from pymobiledevice3.remote.core_device.screen_stream import ScreenStreamServer
 
         tunnel = None
         upstream: Optional[Upstream] = None
         serve_task: Optional[asyncio.Task] = None
         try:
-            self._set("pairing", "Menyapa iPhone. Jika muncul pertanyaan Percayai komputer ini, ketuk Percayai.")
-            info = await self._identify(udid)
-            self.state.device = info
-            major = info["ios"].split(".")[0]
+            if transport == "wifi":
+                info = dict(self._names.get(udid) or {"name": None, "ios": ""})
+                self.state.device = {**info, "transport": "wifi"}
+                self._set("tunnel", "Mencari iPhone di jaringan Wi-Fi.")
+            else:
+                self._set("pairing", "Menyapa iPhone. Jika muncul pertanyaan Percayai komputer ini, ketuk Percayai.")
+                info = await self._identify(udid)
+                self.state.device = {**info, "transport": "usb"}
+            major = (info.get("ios") or "").split(".")[0]
             if major.isdigit() and int(major) < MIN_IOS_MAJOR:
                 raise SessionError(
                     f"iPhone ini memakai iOS {info['ios']}. Mirroring layar butuh iOS {MIN_IOS_MAJOR} atau lebih baru."
                 )
 
-            self._set("tunnel", "Membuka jalur data ke iPhone.")
-            tunnel, rsd = await self._dial_tunnel(udid)
+            if transport != "wifi":
+                self._set("tunnel", "Membuka jalur data ke iPhone.")
+            tunnel, rsd = await self._dial_tunnel(udid, transport)
+            if transport == "wifi" and not self.state.device.get("name"):
+                self.state.device["name"] = wifi.device_name(rsd)
 
             if not self._has_display(rsd):
                 self._set("mounting", "Memasang Developer Disk Image. Ini sekali saja dan perlu internet.")
@@ -234,7 +272,7 @@ class Core:
 
                 await auto_mount(rsd)
                 await tunnel.aclose()
-                tunnel, rsd = await self._dial_tunnel(udid)
+                tunnel, rsd = await self._dial_tunnel(udid, transport)
                 if not self._has_display(rsd):
                     raise SessionError("iPhone tidak menyediakan layanan layar. Pastikan Developer Mode aktif.")
 

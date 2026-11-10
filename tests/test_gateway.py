@@ -256,6 +256,38 @@ class GatewayTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status, 200)  # slots are released
 
 
+    # --- Wi-Fi gate --------------------------------------------------------
+    async def test_wifi_off_by_default_and_gated(self):
+        self.assertFalse(self.core.allow_wifi)
+        body = json.dumps({"udid": "00008120-001A32801E", "transport": "wifi"}).encode()
+        status, data = await req(self.port, "POST", "/api/connect", body=body)
+        self.assertEqual(status, 409)
+        status, _ = await req(self.port, "POST", "/api/wifi/enable", body=b'{"udid":"00008120-001A32801E"}')
+        self.assertEqual(status, 409)
+
+    async def test_wifi_setting_toggles_core_flag(self):
+        await req(self.port, "POST", "/api/settings", body=b'{"allowWifi": true}')
+        self.assertTrue(self.core.allow_wifi)
+        await req(self.port, "POST", "/api/settings", body=b'{"allowWifi": false}')
+        self.assertFalse(self.core.allow_wifi)
+
+    async def test_bad_udid_and_transport_rejected(self):
+        for body in (b'{"udid":"../../etc/passwd"}', b'{"udid":"a b"}', b'{"udid":"' + b"a" * 65 + b'"}',
+                     b'{"udid":"abc","transport":"bluetooth"}', b'{"udid":123}'):
+            status, _ = await req(self.port, "POST", "/api/connect", body=body)
+            self.assertEqual(status, 400, body)
+        status, _ = await req(self.port, "POST", "/api/wifi/revoke", body=b'{"udid":"..\\x"}')
+        self.assertEqual(status, 400)
+
+    async def test_only_loopback_listeners(self):
+        import psutil
+        mine = psutil.Process().net_connections(kind="inet")
+        listening = {(c.laddr.ip, c.laddr.port) for c in mine if c.status == psutil.CONN_LISTEN}
+        self.assertTrue(listening)
+        for ip, _ in listening:
+            self.assertEqual(ip, "127.0.0.1")
+
+
 class EnginePortOwnershipTests(unittest.IsolatedAsyncioTestCase):
     """The engine port must be ours before any password is sent to it."""
 

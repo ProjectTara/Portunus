@@ -11,6 +11,7 @@ const ui = {
   updateButton: $("#update-button"), updateText: $("#update-text"),
   updateCheck: $("#update-check"), updateInstall: $("#update-install"),
   versionCurrent: $("#version-current"),
+  typeChip: $("#type-chip"),
 };
 
 const BUSY = ["pairing", "tunnel", "mounting", "starting"];
@@ -73,6 +74,9 @@ function toast(text, bad = false, ms = 2600) {
   ui.toast.textContent = text;
   ui.toast.classList.toggle("bad", bad);
   ui.toast.hidden = false;
+  ui.toast.classList.remove("enter");
+  void ui.toast.offsetWidth; // restart the entrance animation
+  ui.toast.classList.add("enter");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { ui.toast.hidden = true; }, ms);
 }
@@ -255,6 +259,7 @@ class Player {
     if (this.canvas.width !== cw || this.canvas.height !== ch) {
       this.canvas.width = cw;
       this.canvas.height = ch;
+      fitCanvas(); // the frame turned or changed size
     }
     const ctx = this.ctx;
     ctx.setTransform(1, 0, 0, 1, cw / 2, ch / 2);
@@ -271,10 +276,22 @@ class Player {
 const player = new Player(ui.canvas);
 
 // Rounded corners follow the phone's own proportion at any window size.
-new ResizeObserver(() => {
-  const rect = ui.canvas.getBoundingClientRect();
-  ui.canvas.style.setProperty("--radius", `${Math.round(Math.min(rect.width, rect.height) * 0.11)}px`);
-}).observe(ui.canvas);
+// The canvas box is sized here, not by CSS max-width/max-height: inside a
+// flex container Chromium may clamp one side without the other and squash
+// the picture. This keeps the frame's exact aspect ratio at any window size.
+const REFLECTION_SHARE = 0.8; // canvas height share when the reflection shows
+function fitCanvas() {
+  const box = ui.screen.getBoundingClientRect();
+  if (!box.width || !box.height) return;
+  const maxH = box.height * (settings.reflection ? REFLECTION_SHARE : 1);
+  const scale = Math.min(box.width / ui.canvas.width, maxH / ui.canvas.height);
+  const w = Math.max(1, Math.floor(ui.canvas.width * scale));
+  const h = Math.max(1, Math.floor(ui.canvas.height * scale));
+  ui.canvas.style.width = `${w}px`;
+  ui.canvas.style.height = `${h}px`;
+  ui.canvas.style.setProperty("--radius", `${Math.round(Math.min(w, h) * 0.11)}px`);
+}
+new ResizeObserver(fitCanvas).observe(ui.screen);
 
 // ---------------------------------------------------------------- touch
 function toHid(clientX, clientY) {
@@ -311,6 +328,7 @@ ui.canvas.addEventListener("pointerdown", (e) => {
   }
   endScroll();
   touching = true;
+  ripple(e.clientX, e.clientY);
   input.send("/m/touch", { type: "contact", ...toHid(e.clientX, e.clientY) });
 });
 
@@ -318,6 +336,18 @@ ui.canvas.addEventListener("pointermove", (e) => {
   if (picking) { updateMarquee(e.clientX, e.clientY); return; }
   if (touching) input.move(toHid(e.clientX, e.clientY));
 });
+
+// A short ring where the finger landed, so a click visibly "touches" the phone.
+function ripple(x, y) {
+  const host = ui.screen.getBoundingClientRect();
+  const dot = document.createElement("span");
+  dot.className = "ripple";
+  dot.style.left = `${x - host.left}px`;
+  dot.style.top = `${y - host.top}px`;
+  dot.addEventListener("animationend", () => dot.remove(), { once: true });
+  ui.screen.append(dot);
+  setTimeout(() => dot.remove(), 800); // reduced-motion has no animationend
+}
 
 function liftPointer(e) {
   if (picking) { finishPick(e.clientX, e.clientY); return; }
@@ -425,8 +455,15 @@ document.addEventListener("keyup", (e) => {
   sendKeys();
 });
 
-ui.screen.addEventListener("focus", () => { ui.hint.textContent = "Mengetik ke iPhone. Klik di luar layar untuk berhenti."; });
-ui.screen.addEventListener("blur", () => { dropHeldKeys(); ui.hint.textContent = "Klik layar untuk mengetik"; });
+ui.screen.addEventListener("focus", () => {
+  ui.hint.textContent = "Mengetik ke iPhone. Klik di luar layar untuk berhenti.";
+  ui.typeChip.hidden = false;
+});
+ui.screen.addEventListener("blur", () => {
+  dropHeldKeys();
+  ui.hint.textContent = "Klik layar untuk mengetik";
+  ui.typeChip.hidden = true;
+});
 window.addEventListener("blur", dropHeldKeys);
 
 async function chord(...usages) {
@@ -564,6 +601,15 @@ const ACTIONS = {
   disconnect: async () => { await api("/api/disconnect", {}).catch(() => {}); refresh(); },
 };
 
+// Every rail button keeps a readable name when its label is hidden on short
+// windows: the tooltip shows the name (and the shortcut, if any).
+document.querySelectorAll(".rail button").forEach((button) => {
+  const label = button.querySelector("span")?.textContent.trim();
+  if (!label) return;
+  button.setAttribute("aria-label", label);
+  button.title = button.title ? `${label} (${button.title})` : label;
+});
+
 document.querySelector(".rail").addEventListener("click", (e) => {
   const button = e.target.closest("button[data-action]");
   if (button && !button.disabled) ACTIONS[button.dataset.action]?.();
@@ -574,6 +620,7 @@ function applySettings() {
   if (settings.theme === "system") delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = settings.theme;
   document.body.classList.toggle("reflect", settings.reflection);
+  fitCanvas();
 }
 
 function openSettings() {
@@ -583,6 +630,7 @@ function openSettings() {
   form.scrollSpeed.value = settings.scrollSpeed;
   form.reflection.checked = settings.reflection;
   form.autoUpdateCheck.checked = settings.autoUpdateCheck;
+  form.allowWifi.checked = settings.allowWifi;
   showUpdate();
   ui.audioRow.hidden = !state.features.audio;
   if (state.features.audio) loadAudioDevices();
@@ -682,8 +730,18 @@ ui.updateInstall.addEventListener("click", installUpdate);
 // ---------------------------------------------------------------- state view
 let lastDevices = "";
 
+function deviceButton(label, cls, onClick, disabled) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = cls;
+  button.textContent = label;
+  button.disabled = disabled;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
 function paintDeviceList() {
-  const key = JSON.stringify([state.devices, state.phase]);
+  const key = JSON.stringify([state.devices, state.phase, settings.allowWifi]);
   if (key === lastDevices) return;
   lastDevices = key;
   const busy = BUSY.includes(state.phase);
@@ -694,21 +752,42 @@ function paintDeviceList() {
     const name = document.createElement("div");
     name.className = "name";
     name.textContent = d.name || "iPhone";
+    const badge = document.createElement("span");
+    badge.className = `badge ${d.transport}`;
+    badge.textContent = d.transport === "wifi" ? "Wi-Fi" : "USB";
+    name.append(" ", badge);
     const meta = document.createElement("div");
     meta.className = "meta";
     meta.textContent = `${d.ios ? `iOS ${d.ios}, ` : ""}ID ${d.udid.slice(-8)}`;
     text.append(name, meta);
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "primary";
-    button.textContent = busy && state.udid === d.udid ? "Menghubungkan" : "Hubungkan";
-    button.disabled = busy;
-    button.addEventListener("click", () => connect(d.udid));
-    li.append(text, button);
+    const actions = document.createElement("div");
+    actions.className = "row-actions";
+    const connecting = busy && state.udid === d.udid;
+    actions.append(deviceButton(connecting ? "Menghubungkan" : "Hubungkan", "primary",
+      () => connect(d.udid, d.transport), busy));
+    if (settings.allowWifi && d.transport === "usb" && !d.wifiReady) {
+      actions.append(deviceButton("Aktifkan Wi-Fi", "ghost", () => wifiAction("enable", d.udid), busy));
+    }
+    if (d.wifiReady) {
+      actions.append(deviceButton("Cabut Wi-Fi", "ghost", () => wifiAction("revoke", d.udid), busy));
+    }
+    li.append(text, actions);
     return li;
   }));
   ui.empty.hidden = state.devices.length > 0;
-  ui.reveal.disabled = busy || state.devices.length === 0;
+  ui.reveal.disabled = busy || !state.devices.some((d) => d.transport === "usb");
+}
+
+async function wifiAction(kind, udid) {
+  if (kind === "revoke" && !window.confirm("Cabut izin Wi-Fi untuk iPhone ini? PC ini tidak bisa lagi menyambung tanpa kabel sampai diaktifkan ulang.")) return;
+  try {
+    await api(`/api/wifi/${kind}`, { udid });
+    toast(kind === "enable" ? "Wi-Fi aktif. Lain kali iPhone bisa disambungkan tanpa kabel." : "Izin Wi-Fi dicabut.");
+  } catch (err) {
+    toast(err.message, true);
+  }
+  lastDevices = "";
+  refresh();
 }
 
 function renderNotice() {
@@ -764,7 +843,8 @@ function render() {
   }
 
   const device = state.device?.name || "iPhone";
-  ui.statusText.textContent = live ? `${device} tersambung lewat USB`
+  const via = state.device?.transport === "wifi" ? "Wi-Fi" : "USB";
+  ui.statusText.textContent = live ? `${device} tersambung lewat ${via}`
     : BUSY.includes(state.phase) ? "Menghubungkan"
     : state.phase === "error" ? "Sambungan gagal"
     : "Belum tersambung";
@@ -788,9 +868,9 @@ async function refresh() {
   render();
 }
 
-async function connect(udid) {
+async function connect(udid, transport = "usb") {
   try {
-    await api("/api/connect", { udid });
+    await api("/api/connect", { udid, transport });
   } catch (err) {
     toast(err.message, true);
   }

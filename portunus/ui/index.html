@@ -84,6 +84,7 @@
       <div class="screen" id="screen" tabindex="0" aria-label="Layar iPhone. Klik untuk mengetik.">
         <canvas id="canvas" width="1179" height="2556"></canvas>
         <div class="marquee" id="marquee" hidden></div>
+        <div class="type-chip" id="type-chip" hidden>Mengetik ke iPhone</div>
       </div>
     </section>
 
@@ -127,6 +128,14 @@
           <select id="audio-device"></select>
           <button type="button" id="audio-toggle">Putar di PC</button>
         </div>
+      </fieldset>
+      <fieldset class="row">
+        <legend>Sambungan Wi-Fi (uji coba)</legend>
+        <label class="check-inline">
+          <input type="checkbox" name="allowWifi">
+          <span>Izinkan menyambung iPhone tanpa kabel di jaringan Wi-Fi yang sama</span>
+        </label>
+        <p class="small">Setelah diizinkan, colok iPhone sekali lalu tekan Aktifkan Wi-Fi. Izin bisa dicabut kapan saja dengan Cabut Wi-Fi.</p>
       </fieldset>
       <fieldset class="row update">
         <legend>Versi <span id="version-current"></span></legend>

@@ -85,55 +85,58 @@ Yang tidak disimpan: PIN, kata sandi, isi clipboard, teks hasil OCR, dan apa pun
 
 Portunus tidak mengubah apa pun di iPhone tanpa aksi Anda. Perubahan hanya terjadi saat pairing (iOS menampilkan dialognya sendiri), saat Developer Disk Image dipasang ketika Anda menekan Hubungkan, dan saat Anda menekan Munculkan menu Developer Mode.
 
+## Sambungan Wi-Fi (uji coba)
+
+Portunus bisa menyambung tanpa kabel bila PC dan iPhone berada di jaringan Wi-Fi yang sama.
+
+1. Buka **Pengaturan**, centang **Izinkan menyambung iPhone tanpa kabel**. Pilihan ini mati secara bawaan.
+2. Colok iPhone sekali dengan kabel, lalu tekan **Aktifkan Wi-Fi** di baris iPhone itu. Portunus membuat izin Wi-Fi lewat USB yang sudah dipercaya, tanpa dialog tambahan di iPhone.
+3. Lain kali iPhone muncul di daftar dengan label **Wi-Fi**. Tekan **Hubungkan** tanpa kabel. Layar iPhone harus menyala.
+
+Keamanan: perangkat di jaringan dicocokkan dengan izinnya lewat tanda kriptografis sebelum data apa pun dikirim, dan terowongannya terenkripsi dengan kunci izin itu. Tidak ada port yang dibuka di PC dan tidak perlu hak admin. Portunus tidak mengubah setelan apa pun di iPhone. **Cabut Wi-Fi** menghapus izin di PC ini; untuk mencabut dari sisi iPhone juga, buka Settings, Developer, Clear Trusted Computers. Mematikan pilihan Wi-Fi di Pengaturan langsung memutus sesi Wi-Fi yang sedang berjalan.
+
+Latensi bergantung pada jaringan; router 5 GHz terasa jauh lebih baik. Android tidak didukung: Portunus memakai protokol Apple.
+
+## Alat pengembang
+
+`tools/ui_sim.py` menjalankan UI asli di Firefox headless dengan backend tiruan:
+
+- `python tools/ui_sim.py test` menguji tampilan di 8 ukuran layar ponsel dan tablet, tegak dan miring, 6 ukuran jendela, pantulan nyala dan mati (192 kasus).
+- `python tools/ui_sim.py video simulasi.mp4` merekam video simulasi alur aplikasi.
+
+Butuh `selenium`, Firefox dengan geckodriver (variabel `FIREFOX`, `GECKODRIVER`), dan `ffmpeg`.
+
 ## Rilis lewat GitHub dan pembaruan satu klik
 
-Setiap kali Anda mendorong tag versi (misalnya `v0.2.1`), GitHub Actions menjalankan test, membangun `Portunus.exe`, menandatanganinya, lalu menerbitkan Release. Portunus yang sudah terpasang akan menampilkan tombol **Perbarui**. Satu klik mengunduh, memverifikasi, memasang, dan membuka ulang Portunus.
+Setiap kali Anda menerbitkan Release di github.com, GitHub Actions menjalankan test, membangun `Portunus.exe`, menandatanganinya, lalu menempelkan `Portunus-win64.zip` ke Release itu. Portunus yang sudah terpasang akan menampilkan tombol **Perbarui**. Satu klik mengunduh, memverifikasi, memasang, dan membuka ulang Portunus.
 
 Repo harus **Public**. Pembaruan otomatis membaca Release tanpa login, jadi Release di repo privat tidak terlihat.
 
 ### Pertama kali (sekali saja)
 
-1. Pasang [Git for Windows](https://git-scm.com/download/win) dan buat akun GitHub.
-2. Ekstrak proyek, misalnya ke `D:\Proyek\portunus`, lalu buka PowerShell di folder itu.
-3. Buat kunci tanda tangan:
+1. Ekstrak proyek, misalnya ke `D:\Proyek\portunus`, lalu buka PowerShell di folder itu.
+2. Buat kunci tanda tangan:
    ```powershell
    py -3.12 -m venv .venv
    .venv\Scripts\python -m pip install --require-hashes -r requirements.lock
    .venv\Scripts\python tools\keygen.py
    ```
-   Kunci publik otomatis ditulis ke `portunus\update_key.py`. Kunci privat tampil sekali di layar. Simpan di password manager. Jangan pernah di-commit, dikirim lewat chat, atau ditempel di issue.
-4. Di github.com, klik **New repository**. Beri nama `portunus`, pilih **Public**, dan jangan centang README atau license (sudah ada di proyek).
-5. Di repo baru: **Settings, Secrets and variables, Actions, New repository secret**. Name: `PORTUNUS_SIGNING_KEY`. Secret: kunci privat dari langkah 3.
-6. Unggah kode (ganti `NAMAANDA`):
-   ```powershell
-   git init -b main
-   git add .
-   git commit -m "Portunus 0.2.0"
-   git remote add origin https://github.com/NAMAANDA/portunus.git
-   git push -u origin main
-   ```
-7. Terbitkan rilis pertama:
-   ```powershell
-   git tag v0.2.0
-   git push origin v0.2.0
-   ```
-   Pantau di tab **Actions**. Setelah sekitar 10 menit, `Portunus-win64.zip` muncul di tab **Releases**.
-8. Unduh zip itu, ekstrak ke `%LOCALAPPDATA%\Programs\Portunus`, lalu jalankan `Portunus.exe`. Jangan taruh di Program Files, karena folder itu tidak bisa ditulis dan pembaruan otomatis akan mati.
+   Kunci publik otomatis ditulis ke `portunus\update_key.py`. Kunci privat tampil sekali di layar. Simpan di password manager. Jangan pernah diunggah atau dikirim ke siapa pun.
+3. Di github.com, klik **New repository**. Beri nama `portunus`, pilih **Public**, dan jangan centang README, .gitignore, atau license.
+4. Di halaman repo kosong, klik **uploading an existing file**. Dari File Explorer, pilih lalu seret isi folder proyek **kecuali** `.venv`, `dist`, `build`, `release`, dan `__pycache__`. Upload lewat web tidak membaca `.gitignore`. Yang diseret: `.github`, `portunus`, `tests`, `tools`, `.gitignore`, `build.cmd`, `LICENSE`, `pyproject.toml`, `README.md`, `requirements.lock`, `requirements.txt`. Klik **Commit changes**.
+5. Periksa bahwa folder `.github/workflows` ada di repo. Jika tidak ada, klik **Add file, Create new file**, ketik nama `.github/workflows/release.yml`, tempel isi file itu dari komputer, lalu commit. Ulangi untuk `ci.yml`.
+6. Buka **Settings, Secrets and variables, Actions, New repository secret**. Name: `PORTUNUS_SIGNING_KEY`. Secret: kunci privat dari langkah 2.
+7. Buka **Releases, Draft a new release**. Di **Choose a tag**, ketik `v0.2.0` lalu pilih **Create new tag: v0.2.0 on publish**. Isi judul, lalu klik **Publish release**.
+8. Pantau di tab **Actions**. Setelah sekitar 10 menit, tiga file muncul di Release itu: `Portunus-win64.zip`, `portunus-manifest.json`, dan `portunus-manifest.json.sig`.
+9. Unduh `Portunus-win64.zip`, ekstrak ke `%LOCALAPPDATA%\Programs\Portunus`, lalu jalankan `Portunus.exe`. Jangan taruh di Program Files, karena folder itu tidak bisa ditulis dan pembaruan otomatis akan mati.
 
 ### Setiap ada pembaruan
 
-1. Ubah kode, lalu naikkan versi di `portunus\__init__.py` dan `pyproject.toml`, misalnya menjadi `0.2.1`.
-2. Kirim dan beri tag:
-   ```powershell
-   git add .
-   git commit -m "Portunus 0.2.1"
-   git push
-   git tag v0.2.1
-   git push origin v0.2.1
-   ```
-3. Selesai. Saat dibuka, Portunus memeriksa Release terbaru. Jika ada versi baru, tombol **Perbarui** muncul di kiri bawah.
+1. Di github.com, ubah versi di `portunus/__init__.py` dan `pyproject.toml` lewat ikon pensil, misalnya menjadi `0.2.1`, lalu commit. Untuk mengganti file lain, buka **Add file, Upload files** di folder yang sama, seret file baru (file lama dengan nama sama akan ditimpa), lalu commit.
+2. Buka **Releases, Draft a new release**, buat tag `v0.2.1`, lalu **Publish release**.
+3. Selesai. Setelah Actions selesai, Portunus menampilkan tombol **Perbarui** di kiri bawah.
 
-Tag harus sama dengan `__version__`. Jika berbeda, build sengaja gagal.
+Tag harus sama dengan `__version__`. Jika berbeda, Actions sengaja gagal. Jika Actions gagal, hapus Release dan tag-nya (**Releases**, buka rilisnya, **Delete**, lalu di **Tags** hapus tag-nya), perbaiki, lalu terbitkan lagi.
 
 ### Pengaman pembaruan
 
@@ -144,7 +147,7 @@ Tag harus sama dengan `__version__`. Jika berbeda, build sengaja gagal.
 - Folder lama disimpan sebagai cadangan selama penggantian. Jika penyalinan gagal, folder lama dikembalikan.
 - Workflow memakai action yang dikunci ke SHA commit, dependensi berhash, dan izin token minimal.
 
-Disarankan juga: di **Settings, Environments, release**, tambahkan diri Anda sebagai *required reviewer* agar setiap rilis butuh persetujuan klik. Lalu di **Settings, Rules, Rulesets**, batasi pembuatan tag `v*` hanya untuk Anda.
+Disarankan juga: di **Settings, Environments, release**, tambahkan diri Anda sebagai *required reviewer* agar setiap build rilis butuh persetujuan klik. Aktifkan juga autentikasi dua faktor di akun GitHub.
 
 Jika kunci privat hilang, salinan yang sudah terpasang tidak bisa diperbarui otomatis lagi. Buat kunci baru, terbitkan rilis, dan minta pengguna mengunduh manual sekali.
 

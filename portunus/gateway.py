@@ -136,12 +136,15 @@ class Gateway:
         self._on_update_ready = on_update_ready
         self._release: Optional[updater.Release] = None
         self._update_busy = False
+        self.core.allow_wifi = bool(self.settings.snapshot().get("allowWifi"))
         self._server: Optional[asyncio.base_events.Server] = None
         self._static = self._load_static(ui_dir)
         # (method, path) -> (handler, max_body)
         self._api: dict[tuple[str, str], tuple[Handler, int]] = {
             ("GET", "/api/state"): (self._state, 0),
             ("POST", "/api/connect"): (self._connect, 1024),
+            ("POST", "/api/wifi/enable"): (self._wifi_enable, 1024),
+            ("POST", "/api/wifi/revoke"): (self._wifi_revoke, 1024),
             ("POST", "/api/disconnect"): (self._disconnect, 64),
             ("POST", "/api/reveal-devmode"): (self._reveal, 1024),
             ("GET", "/api/settings"): (self._get_settings, 0),
@@ -385,14 +388,38 @@ class Gateway:
         return state
 
     async def _connect(self, request: Request) -> dict:
-        udid = request.json().get("udid")
-        if not isinstance(udid, str) or not udid or len(udid) > 64:
-            raise HttpError(400, "UDID tidak sah.")
+        body = request.json()
+        udid = self._udid(body)
+        transport = body.get("transport", "usb")
+        if transport not in ("usb", "wifi"):
+            raise HttpError(400, "Jenis sambungan tidak sah.")
         try:
-            await self.core.connect(udid)
+            await self.core.connect(udid, transport)
         except SessionError as exc:
             raise HttpError(409, str(exc)) from exc
         return {"ok": True}
+
+    @staticmethod
+    def _udid(body: dict) -> str:
+        udid = body.get("udid")
+        if not isinstance(udid, str) or not udid or len(udid) > 64 or not all(c.isalnum() or c == "-" for c in udid):
+            raise HttpError(400, "UDID tidak sah.")
+        return udid
+
+    async def _wifi_enable(self, request: Request) -> dict:
+        if not self.core.allow_wifi:
+            raise HttpError(409, "Izinkan sambungan Wi-Fi di Pengaturan dulu.")
+        udid = self._udid(request.json())
+        try:
+            await self.core.enable_wifi(udid)
+        except Exception as exc:  # noqa: BLE001
+            raise HttpError(409, explain(exc)) from exc
+        return {"ok": True}
+
+    async def _wifi_revoke(self, request: Request) -> dict:
+        udid = self._udid(request.json())
+        removed = await self.core.revoke_wifi(udid)
+        return {"ok": True, "removed": removed}
 
     async def _disconnect(self, _: Request) -> dict:
         self.core.state.phase = "idle"
@@ -414,9 +441,13 @@ class Gateway:
 
     async def _set_settings(self, request: Request) -> dict:
         try:
-            return self.settings.update(request.json())
+            saved = self.settings.update(request.json())
         except ValueError as exc:
             raise HttpError(400, str(exc)) from exc
+        self.core.allow_wifi = bool(saved.get("allowWifi"))
+        if not self.core.allow_wifi and self.core.transport == "wifi" and self.core.state.phase != "idle":
+            await self.core.disconnect()  # turning Wi-Fi off ends a Wi-Fi session at once
+        return saved
 
     async def _clip_to_phone(self, _: Request) -> dict:
         try:
@@ -526,6 +557,7 @@ class Gateway:
             raise HttpError(500, "File pembaruan tidak bisa disimpan.") from exc
         finally:
             self._update_busy = False
+        self.core.allow_wifi = bool(self.settings.snapshot().get("allowWifi"))
         await self.core.disconnect()
         if self._on_update_ready:
             # Reply first, then hand over; the window closes a moment later.

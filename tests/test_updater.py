@@ -236,12 +236,20 @@ class UiStaticTests(unittest.TestCase):
 
     def test_reflection_fits_below_canvas(self):
         import re
-        css = (Path(__file__).resolve().parent.parent / "portunus" / "ui" / "style.css").read_text()
+        root = Path(__file__).resolve().parent.parent / "portunus" / "ui"
+        js = (root / "app.js").read_text()
+        css = (root / "style.css").read_text()
+        share = float(re.search(r"REFLECTION_SHARE = ([0-9.]+)", js).group(1))
         block = css[css.index("body.reflect #canvas {"):]
-        max_h = int(re.search(r"max-height: (\d+)%", block).group(1)) / 100
         visible = 1 - int(re.search(r"transparent (\d+)%", block).group(1)) / 100
         # space under a centered canvas must hold the visible part of the reflection
-        self.assertLessEqual(max_h * visible, (1 - max_h) / 2)
+        self.assertLessEqual(share * visible, (1 - share) / 2)
+
+    def test_canvas_size_not_left_to_css_clamping(self):
+        css = (Path(__file__).resolve().parent.parent / "portunus" / "ui" / "style.css").read_text()
+        block = css[css.index("#canvas {"):css.index("}", css.index("#canvas {"))]
+        self.assertNotIn("max-height", block)
+        self.assertNotIn("max-width", block)
 
 
 class SupportTests(unittest.TestCase):
