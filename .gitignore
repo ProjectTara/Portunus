@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+build/
+dist/
+*.spec
+portunus/_build_info.py
+release/
+*.key
+*.pem
