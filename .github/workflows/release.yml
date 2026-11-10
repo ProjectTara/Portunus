@@ -41,6 +41,7 @@ jobs:
           --collect-all pymobiledevice3
           --collect-all pytun_pmd3
           --collect-data pykdebugparser
+          --recursive-copy-metadata pymobiledevice3
           --collect-submodules winrt
           --hidden-import portunus._build_info
           portunus\__main__.py
