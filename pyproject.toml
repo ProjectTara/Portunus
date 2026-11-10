@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "portunus-mirror"
+version = "0.2.0"
+description = "Mirror and control an iPhone from a Windows PC over USB."
+readme = "README.md"
+license = { text = "GPL-3.0-only" }
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "pymobiledevice3==11.45.0",
+    "pywebview==6.1",
+]
+
+[project.optional-dependencies]
+windows = [
+    "winrt-runtime==3.2.1",
+    "winrt-Windows.Foundation==3.2.1",
+    "winrt-Windows.Foundation.Collections==3.2.1",
+    "winrt-Windows.Globalization==3.2.1",
+    "winrt-Windows.Graphics.Imaging==3.2.1",
+    "winrt-Windows.Storage.Streams==3.2.1",
+    "winrt-Windows.Media.Ocr==3.2.1",
+    "winrt-Windows.Media.Audio==3.2.1",
+    "winrt-Windows.Devices.Enumeration==3.2.1",
+]
+
+[project.gui-scripts]
+portunus = "portunus.app:main"
+
+[tool.setuptools]
+packages = ["portunus"]
+
+[tool.setuptools.package-data]
+portunus = ["ui/*"]

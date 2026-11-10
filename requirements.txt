@@ -1,0 +1,15 @@
+# Pinned to releases at least two weeks old (checked 2026-11-10).
+# Python 3.10 - 3.13 (3.12 recommended). Windows 10/11 64-bit.
+pymobiledevice3==11.45.0
+pywebview==6.1
+
+# Windows-only features: OCR, Bluetooth audio. The app runs without them.
+winrt-runtime==3.2.1; sys_platform == "win32"
+winrt-Windows.Foundation==3.2.1; sys_platform == "win32"
+winrt-Windows.Foundation.Collections==3.2.1; sys_platform == "win32"
+winrt-Windows.Globalization==3.2.1; sys_platform == "win32"
+winrt-Windows.Graphics.Imaging==3.2.1; sys_platform == "win32"
+winrt-Windows.Storage.Streams==3.2.1; sys_platform == "win32"
+winrt-Windows.Media.Ocr==3.2.1; sys_platform == "win32"
+winrt-Windows.Media.Audio==3.2.1; sys_platform == "win32"
+winrt-Windows.Devices.Enumeration==3.2.1; sys_platform == "win32"

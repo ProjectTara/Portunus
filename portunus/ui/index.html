@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Portunus</title>
+  <link rel="icon" href="icon.svg">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body data-phase="boot">
+  <svg class="sprite" aria-hidden="true">
+    <symbol id="i-home" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="4"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-vol-up" viewBox="0 0 24 24"><path d="M4 10h3l5-4v12l-5-4H4z"/><path d="M16 12h5M18.5 9.5v5"/></symbol>
+    <symbol id="i-vol-down" viewBox="0 0 24 24"><path d="M4 10h3l5-4v12l-5-4H4z"/><path d="M16 12h5"/></symbol>
+    <symbol id="i-rot-l" viewBox="0 0 24 24"><path d="M9 5H5v4"/><path d="M5 9a8 8 0 1 1 2 6"/></symbol>
+    <symbol id="i-rot-r" viewBox="0 0 24 24"><path d="M15 5h4v4"/><path d="M19 9a8 8 0 1 0-2 6"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><rect x="3" y="5" width="10" height="13" rx="1.5"/><path d="M13 11.5h8M18 8.5l3 3-3 3"/></symbol>
+    <symbol id="i-take" viewBox="0 0 24 24"><rect x="11" y="5" width="10" height="13" rx="1.5"/><path d="M11 11.5H3M6 8.5l-3 3 3 3"/></symbol>
+    <symbol id="i-scan" viewBox="0 0 24 24"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/><path d="M8 10h8M8 14h5"/></symbol>
+    <symbol id="i-shot" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><circle cx="12" cy="13.5" r="3.5"/><path d="M9 7l1.5-3h3L15 7"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></symbol>
+    <symbol id="i-update" viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M5 19h14"/></symbol>
+    <symbol id="i-unplug" viewBox="0 0 24 24"><path d="M9 3v4M15 3v4M7 7h10v4a5 5 0 0 1-10 0z"/><path d="M12 16v5"/></symbol>
+  </svg>
+
+  <nav class="rail" aria-label="Kontrol iPhone">
+    <div class="rail-group" data-needs-live>
+      <button type="button" data-action="home" title="Ctrl+Shift+H"><svg><use href="#i-home"/></svg><span>Beranda</span></button>
+      <button type="button" data-action="lock" title="Ctrl+Shift+L"><svg><use href="#i-lock"/></svg><span>Kunci</span></button>
+      <button type="button" data-action="volume-up"><svg><use href="#i-vol-up"/></svg><span>Keras</span></button>
+      <button type="button" data-action="volume-down"><svg><use href="#i-vol-down"/></svg><span>Pelan</span></button>
+      <button type="button" data-action="rotate-left" title="Ctrl+Shift+["><svg><use href="#i-rot-l"/></svg><span>Putar kiri</span></button>
+      <button type="button" data-action="rotate-right" title="Ctrl+Shift+]"><svg><use href="#i-rot-r"/></svg><span>Putar kanan</span></button>
+    </div>
+    <div class="rail-group" data-needs-live>
+      <button type="button" data-action="paste" title="Ctrl+Shift+V"><svg><use href="#i-send"/></svg><span>Tempel teks PC</span></button>
+      <button type="button" data-action="copy" title="Ctrl+Shift+C"><svg><use href="#i-take"/></svg><span>Salin ke PC</span></button>
+      <button type="button" data-action="ocr" title="Ctrl+Shift+O"><svg><use href="#i-scan"/></svg><span>Baca teks</span></button>
+      <button type="button" data-action="shot" title="Ctrl+Shift+S"><svg><use href="#i-shot"/></svg><span>Simpan layar</span></button>
+    </div>
+    <div class="rail-group rail-end">
+      <button type="button" data-action="update" id="update-button" hidden><svg><use href="#i-update"/></svg><span>Perbarui</span></button>
+      <button type="button" data-action="settings"><svg><use href="#i-gear"/></svg><span>Pengaturan</span></button>
+      <button type="button" data-action="disconnect" data-needs-live><svg><use href="#i-unplug"/></svg><span>Putuskan</span></button>
+    </div>
+  </nav>
+
+  <main class="stage">
+    <section class="setup" id="setup" aria-live="polite">
+      <h1>Sambungkan iPhone</h1>
+      <p class="lede">Colok iPhone ke PC dengan kabel data USB, lalu pilih di bawah.</p>
+
+      <div class="notice" id="notice" hidden></div>
+
+      <ul class="devices" id="devices"></ul>
+      <p class="empty" id="empty">Belum ada iPhone terdeteksi. Periksa kabel dan buka kunci iPhone.</p>
+
+      <ol class="progress" id="progress" hidden>
+        <li data-step="pairing">Menyapa iPhone</li>
+        <li data-step="tunnel">Membuka jalur data</li>
+        <li data-step="mounting">Memasang Developer Disk Image</li>
+        <li data-step="starting">Menyalakan siaran layar</li>
+      </ol>
+      <p class="progress-note" id="progress-note"></p>
+
+      <details class="prep">
+        <summary>Persiapan pertama kali</summary>
+        <ol>
+          <li>Pasang <b>Apple Devices</b> dari Microsoft Store. Aplikasi ini memasang driver USB iPhone.</li>
+          <li>Pasang <b>HEVC Video Extensions</b> dari Microsoft Store. Tanpa ini, layar tampil hitam.</li>
+          <li>
+            Aktifkan Developer Mode di iPhone: Settings, Privacy &amp; Security, Developer Mode, lalu restart iPhone.
+            Jika menu itu tidak ada, colok iPhone lalu tekan tombol ini:
+            <button type="button" class="link" id="reveal" disabled>Munculkan menu Developer Mode</button>
+          </li>
+          <li>Pastikan iPhone memakai iOS 27 atau lebih baru.</li>
+        </ol>
+      </details>
+    </section>
+
+    <section class="live" id="live" hidden>
+      <div class="screen" id="screen" tabindex="0" aria-label="Layar iPhone. Klik untuk mengetik.">
+        <canvas id="canvas" width="1179" height="2556"></canvas>
+        <div class="marquee" id="marquee" hidden></div>
+      </div>
+    </section>
+
+    <div class="toast" id="toast" role="status" hidden></div>
+  </main>
+
+  <footer class="status">
+    <span class="dot" id="dot"></span>
+    <span id="status-text">Memulai</span>
+    <span class="hint" id="hint"></span>
+    <span class="fps" id="fps"></span>
+  </footer>
+
+  <dialog id="settings">
+    <form class="settings-form">
+      <h2>Pengaturan</h2>
+      <label class="row">
+        <span>Tema</span>
+        <select name="theme">
+          <option value="system">Ikuti Windows</option>
+          <option value="light">Terang</option>
+          <option value="dark">Gelap</option>
+        </select>
+      </label>
+      <label class="row check">
+        <input type="checkbox" name="ctrlAsCmd">
+        <span>Ctrl di PC berfungsi sebagai Command di iPhone</span>
+      </label>
+      <label class="row">
+        <span>Kecepatan gulir</span>
+        <input type="range" name="scrollSpeed" min="40" max="250" step="10">
+      </label>
+      <label class="row check">
+        <input type="checkbox" name="reflection">
+        <span>Tampilkan pantulan di bawah layar</span>
+      </label>
+      <fieldset class="row audio" id="audio-row" hidden>
+        <legend>Suara iPhone lewat Bluetooth (uji coba)</legend>
+        <p class="small">Pasangkan iPhone dengan PC di Settings Bluetooth Windows dulu.</p>
+        <div class="audio-controls">
+          <select id="audio-device"></select>
+          <button type="button" id="audio-toggle">Putar di PC</button>
+        </div>
+      </fieldset>
+      <fieldset class="row update">
+        <legend>Versi <span id="version-current"></span></legend>
+        <p class="small" id="update-text">Belum diperiksa.</p>
+        <div class="audio-controls">
+          <button type="button" id="update-check">Periksa pembaruan</button>
+          <button type="button" id="update-install" hidden>Perbarui sekarang</button>
+        </div>
+        <label class="check-inline">
+          <input type="checkbox" name="autoUpdateCheck">
+          <span>Periksa otomatis saat Portunus dibuka</span>
+        </label>
+      </fieldset>
+      <div class="actions"><button type="button" data-close>Selesai</button></div>
+    </form>
+  </dialog>
+</body>
+</html>
