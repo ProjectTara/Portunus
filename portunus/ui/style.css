@@ -200,7 +200,10 @@ button.link {
 button.link:disabled { color: var(--muted); cursor: default; text-decoration: none; }
 
 /* ---- live screen ------------------------------------------------------- */
-.live { width: 100%; height: 100%; min-height: 0; }
+/* Absolute fill gives the screen a definite height. A grid or flex child
+   with height: 100% does not, and then max-height on the canvas is ignored
+   and the phone renders at its native 1179x2556 size. */
+.live { position: absolute; inset: 0; padding: 24px; }
 
 .screen {
   position: relative;
@@ -212,10 +215,13 @@ button.link:disabled { color: var(--muted); cursor: default; text-decoration: no
   outline: none;
 }
 
-body.reflect .screen { padding-bottom: 12%; }
-
 #canvas {
   display: block;
+  flex: 0 0 auto;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
   max-width: 100%;
   max-height: 100%;
   border-radius: var(--radius);
@@ -226,7 +232,10 @@ body.reflect .screen { padding-bottom: 12%; }
 }
 
 body.reflect #canvas {
-  -webkit-box-reflect: below 10px linear-gradient(transparent 82%, rgba(0, 0, 0, 0.16));
+  /* 80% height leaves 10% below the centered canvas; the visible reflection
+     is 6px + 10% of the canvas (8% of the area), so it never spills over. */
+  max-height: 80%;
+  -webkit-box-reflect: below 6px linear-gradient(transparent 90%, rgba(0, 0, 0, 0.18));
 }
 
 .screen:focus-visible #canvas { outline: 2px solid var(--live); outline-offset: 4px; }
@@ -319,6 +328,7 @@ fieldset legend { padding: 0; }
   .rail-end { margin-top: 0; margin-left: auto; }
   .rail button { width: 64px; flex: none; }
   .stage { padding: 12px; }
+  .live { padding: 12px; }
 }
 
 @media (prefers-reduced-motion: no-preference) {

@@ -229,6 +229,20 @@ class UiStaticTests(unittest.TestCase):
         css = (Path(__file__).resolve().parent.parent / "portunus" / "ui" / "style.css").read_text()
         self.assertIn("[hidden] { display: none !important; }", css)
 
+    def test_screen_has_definite_height(self):
+        # Without this the canvas ignores max-height and shows at native size.
+        css = (Path(__file__).resolve().parent.parent / "portunus" / "ui" / "style.css").read_text()
+        self.assertIn(".live { position: absolute; inset: 0;", css)
+
+    def test_reflection_fits_below_canvas(self):
+        import re
+        css = (Path(__file__).resolve().parent.parent / "portunus" / "ui" / "style.css").read_text()
+        block = css[css.index("body.reflect #canvas {"):]
+        max_h = int(re.search(r"max-height: (\d+)%", block).group(1)) / 100
+        visible = 1 - int(re.search(r"transparent (\d+)%", block).group(1)) / 100
+        # space under a centered canvas must hold the visible part of the reflection
+        self.assertLessEqual(max_h * visible, (1 - max_h) / 2)
+
 
 class SupportTests(unittest.TestCase):
     def test_source_runs_do_not_self_update(self):
