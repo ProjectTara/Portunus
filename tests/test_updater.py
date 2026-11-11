@@ -187,7 +187,9 @@ class ApplyUpdateTests(unittest.TestCase):
     """The helper must never leave the user without a working app."""
 
     def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp())
+        # resolve(): Windows temp paths may use 8.3 short names (RUNNER~1) that
+        # apply_update() expands, so compare against the same canonical form.
+        self.tmp = Path(tempfile.mkdtemp()).resolve()
         self.addCleanup(lambda: __import__("shutil").rmtree(self.tmp, ignore_errors=True))
         self.target = self.tmp / "Portunus"
         (self.target / "_internal").mkdir(parents=True)
