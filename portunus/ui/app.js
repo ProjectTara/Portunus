@@ -296,6 +296,7 @@ class Player {
       this.canvas.width = cw;
       this.canvas.height = ch;
       fitCanvas(); // the frame turned or changed size
+      reportGeometry(frame, this);
     }
     const ctx = this.ctx;
     // Resolution collapse: draw only the real picture, stretched to the full size.
@@ -338,6 +339,7 @@ const diag = {
     this.el.textContent = [
       `Portunus ${appVersion}  ${engine}`,
       `frame   ${frame.displayWidth}x${frame.displayHeight}  coded ${frame.codedWidth ?? "-"}x${frame.codedHeight ?? "-"}`,
+      `visible ${frame.visibleRect ? `${frame.visibleRect.x},${frame.visibleRect.y} ${frame.visibleRect.width}x${frame.visibleRect.height}` : "-"}  codec ${p.config?.codec || "-"}`,
       `isi     ${p.crop ? `${p.crop[0]}x${p.crop[1]} (collapse diregangkan)` : "penuh"}`,
       `canvas  ${ui.canvas.width}x${ui.canvas.height}  tampil ${Math.round(c.width)}x${Math.round(c.height)}`,
       `area    ${Math.round(a.width)}x${Math.round(a.height)}  dpr ${devicePixelRatio}`,
@@ -345,6 +347,26 @@ const diag = {
     ].join("\n");
   },
 };
+
+// Frame geometry goes to portunus.log whenever it changes, so a wrong-looking
+// picture can be explained from the log alone.
+let lastGeometry = "";
+function reportGeometry(frame, p) {
+  const v = frame.visibleRect;
+  const info = {
+    display: [frame.displayWidth, frame.displayHeight],
+    coded: [frame.codedWidth ?? null, frame.codedHeight ?? null],
+    visible: v ? [v.x, v.y, v.width, v.height] : null,
+    canvas: [ui.canvas.width, ui.canvas.height],
+    orientation: p.orientation,
+    codec: p.config?.codec || null,
+    crop: p.crop || null,
+  };
+  const key = JSON.stringify(info);
+  if (key === lastGeometry) return;
+  lastGeometry = key;
+  fetch("/api/diag", { method: "POST", headers: headers(true), body: key }).catch(() => {});
+}
 
 const player = new Player(ui.canvas);
 

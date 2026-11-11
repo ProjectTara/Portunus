@@ -150,11 +150,24 @@ def _userspace_tunnel_class():
     return WifiRsdTunnel
 
 
+_psk_ok: Optional[tuple[bool, str]] = None
+
+
+async def require_psk() -> tuple[bool, str]:
+    """TLS-PSK self-check, run off the event loop and remembered once it passes."""
+    global _psk_ok
+    if _psk_ok is None or not _psk_ok[0]:
+        from .tlscheck import psk_tls_ok
+
+        import asyncio
+
+        _psk_ok = await asyncio.to_thread(psk_tls_ok)
+    return _psk_ok
+
+
 async def open_tunnel(udid: str):
     """Open a Wi-Fi tunnel. Returns (handle with aclose(), rsd)."""
-    from .tlscheck import psk_tls_ok
-
-    ok, detail = psk_tls_ok()
+    ok, detail = await require_psk()
     if not ok:
         log.warning("TLS-PSK self-check failed: %s", detail)
         raise WifiError("Enkripsi Wi-Fi (TLS-PSK) tidak tersedia di build ini. Perbarui Portunus ke versi terbaru.")

@@ -80,8 +80,25 @@ def psk_tls_ok(timeout: float = 5.0) -> tuple[bool, str]:
         writer.close()
         return cipher
 
+    # The client runs on its own event loop in its own thread, so this works
+    # from plain code (self-test) and from inside the app's running loop alike.
+    outcome: dict = {}
+
+    def run_client() -> None:
+        try:
+            outcome["cipher"] = asyncio.run(client())
+        except BaseException as exc:  # noqa: BLE001
+            outcome["error"] = exc
+
     try:
-        cipher = asyncio.run(client())
+        worker = threading.Thread(target=run_client, daemon=True)
+        worker.start()
+        worker.join(timeout * 2)
+        if "error" in outcome:
+            raise outcome["error"]
+        if "cipher" not in outcome:
+            raise TimeoutError("TLS-PSK handshake did not finish")
+        cipher = outcome["cipher"]
         thread.join(timeout)
     except Exception as exc:  # noqa: BLE001
         return False, f"client: {type(exc).__name__}: {exc}"

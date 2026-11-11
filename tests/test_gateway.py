@@ -256,6 +256,18 @@ class GatewayTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status, 200)  # slots are released
 
 
+    async def test_diag_logs_only_known_numeric_fields(self):
+        body = json.dumps({"display": [2556, 1179], "coded": [1184, 2560], "evil": "x" * 50}).encode()
+        with self.assertLogs("portunus.gateway", level="INFO") as logs:
+            status, _ = await req(self.port, "POST", "/api/diag", body=body)
+        self.assertEqual(status, 200)
+        self.assertIn("2556", logs.output[0])
+        self.assertNotIn("evil", logs.output[0])
+        status, _ = await req(self.port, "POST", "/api/diag", body=b"{" + b" " * 3000 + b"}")
+        self.assertEqual(status, 413)
+        status, _ = await req(self.port, "POST", "/api/diag", token=None, body=b"{}")
+        self.assertEqual(status, 403)
+
     # --- Wi-Fi gate --------------------------------------------------------
     async def test_wifi_off_by_default_and_gated(self):
         self.assertFalse(self.core.allow_wifi)

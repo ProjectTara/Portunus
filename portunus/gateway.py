@@ -155,6 +155,7 @@ class Gateway:
             ("GET", "/api/audio/devices"): (self._audio_devices, 0),
             ("POST", "/api/audio"): (self._audio_toggle, 2048),
             ("GET", "/api/update"): (self._update_status, 0),
+            ("POST", "/api/diag"): (self._diag, 2048),
             ("POST", "/api/update/check"): (self._update_check, 64),
             ("POST", "/api/update/install"): (self._update_install, 64),
         }
@@ -523,6 +524,14 @@ class Gateway:
         except btaudio.AudioError as exc:
             raise HttpError(409, str(exc)) from exc
         return {"ok": True, "active": self.audio.active_device}
+
+    async def _diag(self, request: Request) -> dict:
+        """Frame geometry from the UI, logged for support. Numbers only, no content."""
+        data = request.json()
+        allowed = {"display", "coded", "visible", "canvas", "orientation", "codec", "crop"}
+        clean = {k: v for k, v in data.items() if k in allowed and isinstance(v, (int, float, str, list, type(None)))}
+        log.info("frame geometry: %s", json.dumps(clean)[:600])
+        return {"ok": True}
 
     # ---- self-update -------------------------------------------------------
     async def _update_status(self, _: Request) -> dict:

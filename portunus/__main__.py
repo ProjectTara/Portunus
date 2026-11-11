@@ -48,6 +48,14 @@ def self_test(report: str) -> int:
         ok, detail = psk_tls_ok()
         if not ok:
             failures.append(f"FAIL tlscheck: {detail}")
+        # ...and the way the app calls it: from inside a running event loop.
+        import asyncio
+
+        from portunus import wifi
+
+        ok, detail = asyncio.run(wifi.require_psk())
+        if not ok:
+            failures.append(f"FAIL tlscheck (inside event loop): {detail}")
     except BaseException:  # noqa: BLE001
         failures.append(f"FAIL tlscheck\n{traceback.format_exc()}")
     try:
