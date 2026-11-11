@@ -23,6 +23,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -41,7 +42,7 @@ from .update_key import PUBLIC_KEY
 ZIP_NAME = "Portunus-win64.zip"
 MANIFEST_NAME = "portunus-manifest.json"
 SIG_NAME = MANIFEST_NAME + ".sig"
-EXE_NAME = "Portunus.exe"
+EXE_NAME = "Portunus.exe" if sys.platform == "win32" else "Portunus"
 MAX_ZIP = 400 * 1024 * 1024
 MAX_SMALL = 256 * 1024
 ALLOWED_HOSTS = {
@@ -223,20 +224,45 @@ def stage(release: Release) -> Path:
         safe_extract(archive, folder)
     archive_path.unlink()
     app = folder / APP_NAME
-    if not (app / EXE_NAME).is_file():
+    if not (app / "Portunus.exe").is_file() and not (app / EXE_NAME).is_file():
         raise UpdateError("Arsip pembaruan tidak berisi Portunus.exe.")
     return app
 
 
+def clean_env() -> dict[str, str]:
+    """Environment for starting ANOTHER frozen Portunus as an independent app.
+
+    PyInstaller's bootloader passes runtime details to its children through
+    _PYI_* variables; a child that sees them may treat itself as a worker of
+    the parent and reuse the parent's runtime files (PyInstaller docs, 6.9+).
+    The updater starts a different build that outlives this process, so it
+    must start clean: drop those variables and ask for a reset.
+    """
+    env = {k: v for k, v in os.environ.items() if not k.startswith("_PYI_") and k != "_MEIPASS2"}
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    return env
+
+
+def _launch(exe: Path, *args: str) -> bool:
+    flags = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+    try:
+        subprocess.Popen(
+            [str(exe), *args],
+            cwd=str(exe.parent),
+            env=clean_env(),
+            creationflags=flags if sys.platform == "win32" else 0,
+            close_fds=True,
+        )
+        return True
+    except OSError as exc:
+        # A crash here would pop up an error box from the windowed helper.
+        logging.getLogger("portunus.updater").warning("could not start %s: %s", exe, exc)
+        return False
+
+
 def launch_helper(staged_app: Path) -> None:
     """Start the NEW build so it can replace this one after we exit."""
-    flags = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
-    subprocess.Popen(
-        [str(staged_app / EXE_NAME), "--apply-update", str(install_dir()), str(os.getpid())],
-        cwd=str(staged_app),
-        creationflags=flags if sys.platform == "win32" else 0,
-        close_fds=True,
-    )
+    _launch(staged_app / EXE_NAME, "--apply-update", str(install_dir()), str(os.getpid()))
 
 
 # ---------------------------------------------------------------- helper side
@@ -253,7 +279,14 @@ def _retry(action, attempts: int = 40, delay: float = 0.25) -> None:
 
 
 def apply_update(target: Path, old_pid: int) -> int:
-    """Run from the staged build: swap the install folder, then relaunch."""
+    """Run from the staged build: swap the install folder, then relaunch.
+
+    The new build is first copied completely into a sibling folder
+    (``Portunus.new``) and only then swapped in with two renames. The install
+    folder therefore never holds a half-copied app: copytree writes
+    Portunus.exe before the large _internal folder, and starting the app in
+    that gap fails with "Failed to load Python DLL ... python3xx.dll".
+    """
     import psutil
 
     try:
@@ -264,23 +297,31 @@ def apply_update(target: Path, old_pid: int) -> int:
         return 1
     staged = Path(sys.executable).resolve().parent
     target = target.resolve()
+    fresh = target.with_name(target.name + ".new")
     backup = target.with_name(target.name + ".old")
+    shutil.rmtree(fresh, ignore_errors=True)
     shutil.rmtree(backup, ignore_errors=True)
+    try:
+        shutil.copytree(staged, fresh)  # slow part, away from the install folder
+    except OSError:
+        shutil.rmtree(fresh, ignore_errors=True)
+        _launch(target / EXE_NAME)  # nothing changed: reopen the current version
+        return 2
     try:
         _retry(lambda: os.replace(target, backup))
     except OSError:
-        # Folder locked (open in Explorer, antivirus scan). Nothing changed:
-        # reopen the current version so the user is never left with no app.
-        subprocess.Popen([str(target / EXE_NAME)], cwd=str(target), close_fds=True)
+        # Folder locked (open in Explorer, antivirus scan). Nothing changed.
+        shutil.rmtree(fresh, ignore_errors=True)
+        _launch(target / EXE_NAME)
         return 3
     try:
-        shutil.copytree(staged, target)
+        _retry(lambda: os.replace(fresh, target))
     except OSError:
-        shutil.rmtree(target, ignore_errors=True)
         _retry(lambda: os.replace(backup, target))  # roll back to the old build
-        subprocess.Popen([str(target / EXE_NAME)], cwd=str(target), close_fds=True)
-        return 2
-    subprocess.Popen([str(target / EXE_NAME)], cwd=str(target), close_fds=True)
+        shutil.rmtree(fresh, ignore_errors=True)
+        _launch(target / EXE_NAME)
+        return 4
+    _launch(target / EXE_NAME)
     return 0
 
 
@@ -290,5 +331,6 @@ def cleanup_after_update() -> None:
         return
     here = install_dir()
     shutil.rmtree(here.with_name(here.name + ".old"), ignore_errors=True)
+    shutil.rmtree(here.with_name(here.name + ".new"), ignore_errors=True)
     if updates_dir() not in here.parents:
         shutil.rmtree(updates_dir(), ignore_errors=True)

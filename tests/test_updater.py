@@ -184,44 +184,87 @@ class StageTests(unittest.TestCase):
 
 
 class ApplyUpdateTests(unittest.TestCase):
-    """The helper must never leave the user without a running app."""
+    """The helper must never leave the user without a working app."""
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(lambda: __import__("shutil").rmtree(self.tmp, ignore_errors=True))
         self.target = self.tmp / "Portunus"
-        self.target.mkdir()
+        (self.target / "_internal").mkdir(parents=True)
         (self.target / "Portunus.exe").write_bytes(b"old")
+        (self.target / "_internal" / "python312.dll").write_bytes(b"old")
         self.staged = self.tmp / "staged" / "Portunus"
-        self.staged.mkdir(parents=True)
+        (self.staged / "_internal").mkdir(parents=True)
         (self.staged / "Portunus.exe").write_bytes(b"new")
+        (self.staged / "_internal" / "python313.dll").write_bytes(b"new")
         import psutil
+        self.launched = []
         patches = [
             mock.patch.object(psutil, "Process", side_effect=psutil.NoSuchProcess(1)),
             mock.patch.object(updater.sys, "executable", str(self.staged / "Portunus.exe")),
-            mock.patch.object(updater.subprocess, "Popen"),
+            mock.patch.object(updater, "_launch", side_effect=lambda exe, *a: self.launched.append(exe)),
             mock.patch.object(updater.time, "sleep"),
         ]
         for p in patches:
             p.start()
             self.addCleanup(p.stop)
 
+    def assert_complete(self, version: str) -> None:
+        exe = (self.target / "Portunus.exe").read_bytes()
+        dll = "python313.dll" if version == "new" else "python312.dll"
+        self.assertEqual(exe, version.encode())
+        self.assertTrue((self.target / "_internal" / dll).is_file(), "install folder is half-copied")
+        self.assertEqual(self.launched, [self.target / updater.EXE_NAME])
+        self.assertFalse((self.tmp / "Portunus.new").exists())
+
     def test_success_swaps_and_relaunches(self):
         self.assertEqual(updater.apply_update(self.target, 1), 0)
-        self.assertEqual((self.target / "Portunus.exe").read_bytes(), b"new")
-        updater.subprocess.Popen.assert_called_once()
+        self.assert_complete("new")
 
-    def test_locked_folder_relaunches_old_version(self):
-        with mock.patch.object(updater.os, "replace", side_effect=PermissionError("locked")):
+    def test_install_folder_is_never_half_copied(self):
+        # Watch the install folder during the copy: it must hold the complete
+        # old app the whole time (a user may start Portunus in that gap).
+        real_copytree = updater.shutil.copytree
+        seen = []
+
+        def watching_copy(src, dst, *a, **kw):
+            result = real_copytree(src, dst, *a, **kw)
+            seen.append(((self.target / "Portunus.exe").read_bytes(),
+                         (self.target / "_internal" / "python312.dll").is_file(), Path(dst).name))
+            return result
+
+        with mock.patch.object(updater.shutil, "copytree", side_effect=watching_copy):
+            self.assertEqual(updater.apply_update(self.target, 1), 0)
+        self.assertTrue(seen)
+        for exe, old_dll_present, dst in seen:  # copytree recurses into _internal
+            self.assertEqual((exe, old_dll_present), (b"old", True))
+            self.assertNotEqual(dst, "Portunus")
+        self.assert_complete("new")
+
+    def test_locked_folder_keeps_old_version(self):
+        real_replace = updater.os.replace
+
+        def locked(src, dst):
+            if Path(src) == self.target:
+                raise PermissionError("locked")
+            return real_replace(src, dst)
+
+        with mock.patch.object(updater.os, "replace", side_effect=locked):
             self.assertEqual(updater.apply_update(self.target, 1), 3)
-        self.assertEqual((self.target / "Portunus.exe").read_bytes(), b"old")
-        updater.subprocess.Popen.assert_called_once()
+        self.assert_complete("old")
 
-    def test_failed_copy_rolls_back(self):
+    def test_failed_copy_keeps_old_version(self):
         with mock.patch.object(updater.shutil, "copytree", side_effect=OSError("disk full")):
             self.assertEqual(updater.apply_update(self.target, 1), 2)
-        self.assertEqual((self.target / "Portunus.exe").read_bytes(), b"old")
-        updater.subprocess.Popen.assert_called_once()
+        self.assert_complete("old")
+
+    def test_child_starts_with_clean_pyinstaller_environment(self):
+        with mock.patch.dict(updater.os.environ, {"_PYI_APPLICATION_HOME_DIR": "C:/old/_internal",
+                                                  "_PYI_PARENT_PROCESS_LEVEL": "1", "PATH": "x"}):
+            env = updater.clean_env()
+        self.assertEqual(env["PYINSTALLER_RESET_ENVIRONMENT"], "1")
+        self.assertFalse(any(k.startswith("_PYI_") for k in env))
+        self.assertEqual(env["PATH"], "x")
 
 
 class UiStaticTests(unittest.TestCase):
