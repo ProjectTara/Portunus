@@ -152,6 +152,12 @@ def _userspace_tunnel_class():
 
 async def open_tunnel(udid: str):
     """Open a Wi-Fi tunnel. Returns (handle with aclose(), rsd)."""
+    from .tlscheck import psk_tls_ok
+
+    ok, detail = psk_tls_ok()
+    if not ok:
+        log.warning("TLS-PSK self-check failed: %s", detail)
+        raise WifiError("Enkripsi Wi-Fi (TLS-PSK) tidak tersedia di build ini. Perbarui Portunus ke versi terbaru.")
     cls = _userspace_tunnel_class()
     tunnel = cls(serial=udid, autopair=False)
     rsd = await tunnel.aopen()

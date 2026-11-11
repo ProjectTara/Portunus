@@ -11,7 +11,7 @@ SELF_TEST_MODULES = (
     "pymobiledevice3.bonjour",
     "pymobiledevice3.remote.tunnel_service",
     "pymobiledevice3.pair_records",
-    "sslpsk_pmd3.sslpsk",
+    "portunus.tlscheck",
     "pymobiledevice3.lockdown",
     "pymobiledevice3.usbmux",
     "pymobiledevice3.remote.rsd_tunnel",
@@ -40,16 +40,16 @@ def self_test(report: str) -> int:
             importlib.import_module(name)
         except BaseException:  # noqa: BLE001
             failures.append(f"FAIL {name}\n{traceback.format_exc()}")
-    # The library imports the TLS-PSK helper inside try/except, so a missing
-    # piece would only surface later as a bare AssertionError on Wi-Fi.
-    if sys.version_info < (3, 13):
-        try:
-            from pymobiledevice3.remote import tunnel_service
+    # Wi-Fi tunnels need TLS-PSK. Prove it with a real loopback handshake made
+    # the way the library makes it (an import alone proved nothing before).
+    try:
+        from portunus.tlscheck import psk_tls_ok
 
-            if tunnel_service.SSLPSKContext is None:
-                failures.append("FAIL tunnel_service.SSLPSKContext is None (Wi-Fi TCP tunnel needs sslpsk_pmd3)")
-        except BaseException:  # noqa: BLE001
-            failures.append(f"FAIL SSLPSKContext check\n{traceback.format_exc()}")
+        ok, detail = psk_tls_ok()
+        if not ok:
+            failures.append(f"FAIL tlscheck: {detail}")
+    except BaseException:  # noqa: BLE001
+        failures.append(f"FAIL tlscheck\n{traceback.format_exc()}")
     try:
         from portunus.srpcheck import pairing_math_ok
 

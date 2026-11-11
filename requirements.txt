@@ -1,5 +1,7 @@
 # Pinned to releases at least two weeks old (checked 2026-11-10).
-# Python 3.10 - 3.13 (3.12 recommended). Windows 10/11 64-bit.
+# Python 3.13 (required for Wi-Fi: its ssl module has the TLS-PSK the tunnel
+# needs; the sslpsk_pmd3 wheel for older Pythons links OpenSSL 1.1 and cannot
+# load on Windows). Windows 10/11 64-bit.
 pymobiledevice3==11.45.0
 pywebview==6.1
 # pymobiledevice3 11.45 calls srptools' 1.x API; srptools 2.0.0 (2026-10-26) changed

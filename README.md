@@ -11,7 +11,7 @@ Portunus tidak berafiliasi dengan Apple. "iPhone" adalah merek dagang Apple Inc.
 - Windows 10 atau 11, 64-bit.
 - iPhone dengan iOS 27 atau lebih baru.
 - Kabel USB yang mendukung data (bukan kabel khusus charge).
-- Python 3.10 sampai 3.13. Disarankan 3.12.
+- Python 3.13 (wajib untuk mode Wi-Fi).
 
 ## Persiapan pertama kali
 
@@ -29,12 +29,12 @@ Saat pertama kali tersambung, Portunus memasang Developer Disk Image di iPhone. 
 Nama paket di PyPI: `portunus-mirror`. Nama modul Python: `portunus`.
 
 ```powershell
-py -3.12 -m venv .venv
+py -3.13 -m venv .venv
 .venv\Scripts\python -m pip install --require-hashes -r requirements.lock
 .venv\Scripts\python -m portunus
 ```
 
-`requirements.lock` mengunci seluruh 108 paket, termasuk dependensi tidak langsung, dengan hash SHA-256 untuk Windows 64-bit dan Python 3.12. Pip menolak memasang file yang hash-nya berbeda. Semua versi dirilis paling lambat 27 Oktober 2026, minimal dua minggu sebelum dikunci. Untuk Python versi lain, pakai `requirements.txt`. File itu hanya mengunci dependensi langsung.
+`requirements.lock` mengunci seluruh 108 paket, termasuk dependensi tidak langsung, dengan hash SHA-256 untuk Windows 64-bit dan Python 3.13. Pip menolak memasang file yang hash-nya berbeda. Semua versi dirilis paling lambat 27 Oktober 2026, minimal dua minggu sebelum dikunci. Untuk Python versi lain, pakai `requirements.txt`. File itu hanya mengunci dependensi langsung.
 
 Paket `winrt` di `requirements.txt` hanya dipakai untuk OCR dan audio Bluetooth. Jika gagal terpasang, Portunus tetap berjalan tanpa dua fitur itu.
 
@@ -117,7 +117,7 @@ Repo harus **Public**. Pembaruan otomatis membaca Release tanpa login, jadi Rele
 1. Ekstrak proyek, misalnya ke `D:\Proyek\portunus`, lalu buka PowerShell di folder itu.
 2. Buat kunci tanda tangan:
    ```powershell
-   py -3.12 -m venv .venv
+   py -3.13 -m venv .venv
    .venv\Scripts\python -m pip install --require-hashes -r requirements.lock
    .venv\Scripts\python tools\keygen.py
    ```

@@ -9,7 +9,6 @@ python -m PyInstaller --noconfirm --clean --windowed --name Portunus ^
   --add-data "portunus\ui;portunus\ui" ^
   --collect-all pymobiledevice3 ^
   --collect-all pytun_pmd3 ^
-  --collect-all sslpsk_pmd3 ^
   --collect-data pykdebugparser ^
   --recursive-copy-metadata pymobiledevice3 ^
   --collect-submodules winrt ^
