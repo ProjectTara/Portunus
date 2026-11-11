@@ -61,9 +61,12 @@ Hasilnya ada di `dist\Portunus\Portunus.exe`. File ini tidak ditandatangani, jad
 | Salin pilihan di iPhone ke PC | Ctrl+Shift+C |
 | Baca teks dari layar (OCR) | Ctrl+Shift+O, lalu seret kotak atau klik sekali untuk seluruh layar |
 | Simpan gambar layar | Ctrl+Shift+S |
-| Putar kiri, putar kanan | Ctrl+Shift+[ dan Ctrl+Shift+] |
+| Putar tampilan (misalnya video YouTube layar penuh) | Tombol Putar atau Ctrl+Shift+]. Shift-klik, klik kanan, atau Ctrl+Shift+[ untuk arah sebaliknya |
+| Mode fokus: layar penuh, sidebar muncul di tepi kiri | F11 (Esc atau F11 untuk keluar) |
+| Lembar semua pintasan | ? |
+| Panel diagnostik | Ctrl+Shift+D |
 
-Suara iPhone bisa diputar di PC lewat Bluetooth (uji coba). Pasangkan iPhone dengan PC di Settings Bluetooth Windows, lalu pilih di Pengaturan Portunus.
+Suara iPhone diputar di PC lewat Bluetooth (uji coba), karena audio lewat USB hanya didukung di macOS. Caranya: di PC buka Settings, Bluetooth & devices, Add device, Bluetooth, lalu pilih iPhone (Bluetooth iPhone harus menyala dan iPhone membuka Settings, Bluetooth). Setelah terpasang, buka Pengaturan Portunus, pilih iPhone di bagian Suara, lalu tekan Putar di PC.
 
 ## Keamanan
 

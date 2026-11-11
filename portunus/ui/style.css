@@ -6,7 +6,8 @@
   --ground: #d9dee2;
   --panel: #eef1f3;
   --ink: #172026;
-  --muted: #586670;
+  --muted: #55626c;
+  --edge: #737c82;      /* borders of interactive controls: >= 3:1 */
   --line: #bfc8ce;
   --live: #127a73;
   --warn: #9a4b12;
@@ -24,6 +25,7 @@
     --panel: #1b2125;
     --ink: #e4eaed;
     --muted: #8e9ba4;
+    --edge: #676f74;
     --line: #2c353b;
     --live: #3db5a9;
     --warn: #e39a5c;
@@ -37,6 +39,7 @@
   --panel: #1b2125;
   --ink: #e4eaed;
   --muted: #8e9ba4;
+  --edge: #676f74;
   --line: #2c353b;
   --live: #3db5a9;
   --warn: #e39a5c;
@@ -275,7 +278,7 @@ dialog::backdrop { background: rgba(10, 14, 16, 0.35); }
 .row.check input { margin-top: 4px; }
 .row select, .audio-controls select {
   padding: 6px 8px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--edge);
   border-radius: 8px;
   background: var(--ground);
   color: var(--ink);
@@ -324,7 +327,7 @@ button:not(:disabled):active { transform: scale(0.96); }
 .row-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 button.ghost {
   padding: 7px 14px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--edge);
   border-radius: 999px;
   background: transparent;
   color: var(--ink);
@@ -491,8 +494,8 @@ body[data-phase="live"] .dot { animation: pulse 2.4s ease-out infinite; }
 /* icons hint at their action */
 .rail button:not([aria-disabled="true"]):hover svg,
 .rail button:not([aria-disabled="true"]):focus-visible svg { transform: scale(1.12); }
-.rail [data-action="rotate-left"]:not([aria-disabled="true"]):hover svg { transform: rotate(-45deg); }
-.rail [data-action="rotate-right"]:not([aria-disabled="true"]):hover svg { transform: rotate(45deg); }
+.rail [data-action="rotate"]:not([aria-disabled="true"]):hover svg { transform: rotate(-45deg); }
+.rail [data-action="focus"]:not([aria-disabled="true"]):hover svg { transform: scale(1.18); }
 .rail [data-action="settings"]:hover svg { transform: rotate(90deg); }
 .rail [data-action="volume-up"]:not([aria-disabled="true"]):hover svg { transform: translateY(-2px) scale(1.08); }
 .rail [data-action="volume-down"]:not([aria-disabled="true"]):hover svg { transform: translateY(2px) scale(1.08); }
@@ -645,6 +648,73 @@ body.rail-compact .rail-toggle svg { transform: rotate(180deg); }
   pointer-events: none;
   user-select: text;
 }
+
+/* ---- minimal chrome ------------------------------------------------------
+   The status bar repeated what the rail head already says; fps lives in the
+   diagnostics panel (Ctrl+Shift+D) and the first-run hint is a coach mark. */
+.status { display: none !important; }
+
+/* Offline, the rail shows only what can be used: status head and settings. */
+body:not([data-phase="live"]) .rail [data-needs-live] { display: none !important; }
+body[data-phase="live"] .rail [data-needs-live] button,
+body[data-phase="live"] .rail button[data-needs-live] {
+  animation: rail-in 260ms var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 28ms);
+}
+@keyframes rail-in { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
+
+/* A round "finger" cursor over the phone says: clicks here are touches. */
+#canvas {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Ccircle cx='12' cy='12' r='8' fill='rgba(255,255,255,0.28)' stroke='white' stroke-width='1.5'/%3E%3Ccircle cx='12' cy='12' r='8' fill='none' stroke='rgba(0,0,0,0.45)' stroke-width='0.75'/%3E%3C/svg%3E") 12 12, pointer;
+}
+
+.coach {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 88%, transparent);
+  color: var(--ground);
+  font-size: 13px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: toast-in var(--dur-in) var(--ease-out);
+}
+.coach.leaving { opacity: 0; transition: opacity 400ms ease; }
+.coach kbd, .keys-list kbd {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ground) 20%, transparent);
+  font: 600 11px ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+/* ---- focus mode: full screen, phone only, rail as an edge drawer --------- */
+body.focus { grid-template-columns: 1fr; }
+body.focus .rail {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 40;
+  box-shadow: var(--shadow);
+  transform: translateX(-105%);
+  transition: transform 220ms var(--ease-out);
+}
+body.focus.rail-peek .rail { transform: none; }
+body.focus .stage { padding: 8px; }
+body.focus .live { padding: 8px; }
+
+/* ---- shortcut sheet ------------------------------------------------------- */
+.keys-box { padding: 20px 22px; }
+.keys-box h2 { margin: 0 0 12px; font-size: 19px; font-weight: 600; }
+.keys-list { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 0 0 16px; }
+.keys-list dt { display: flex; gap: 3px; white-space: nowrap; }
+.keys-list kbd { background: color-mix(in srgb, var(--ink) 10%, transparent); color: var(--ink); }
+.keys-list dd { margin: 0; color: var(--muted); }
+.actions { gap: 12px; align-items: center; }
+.actions .link { margin-right: auto; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

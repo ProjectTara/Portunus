@@ -25,6 +25,7 @@
     <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
     <symbol id="i-cross" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
     <symbol id="i-collapse" viewBox="0 0 24 24"><path d="M14 6l-6 6 6 6"/><path d="M19 6v12"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></symbol>
     <symbol id="i-unplug" viewBox="0 0 24 24"><path d="M9 3v4M15 3v4M7 7h10v4a5 5 0 0 1-10 0z"/><path d="M12 16v5"/></symbol>
   </svg>
 
@@ -39,8 +40,7 @@
       <button type="button" data-action="lock" data-keys="Ctrl Shift L" data-tip="Kunci iPhone"><svg><use href="#i-lock"/></svg><span>Kunci</span></button>
       <button type="button" data-action="volume-up" data-repeat data-keys="" data-tip="Volume naik (tahan untuk mengulang)"><svg><use href="#i-vol-up"/></svg><span>Keras</span></button>
       <button type="button" data-action="volume-down" data-repeat data-keys="" data-tip="Volume turun (tahan untuk mengulang)"><svg><use href="#i-vol-down"/></svg><span>Pelan</span></button>
-      <button type="button" data-action="rotate-left" data-keys="Ctrl Shift [" data-tip="Putar kiri"><svg><use href="#i-rot-l"/></svg><span>Kiri</span></button>
-      <button type="button" data-action="rotate-right" data-keys="Ctrl Shift ]" data-tip="Putar kanan"><svg><use href="#i-rot-r"/></svg><span>Kanan</span></button>
+      <button type="button" data-action="rotate" data-keys="Ctrl Shift ]" data-tip="Putar tampilan (Shift-klik: arah sebaliknya)"><svg><use href="#i-rot-l"/></svg><span>Putar</span></button>
     </div>
     <div class="rail-group" data-needs-live>
       <button type="button" data-action="paste" data-keys="Ctrl Shift V" data-tip="Tempel teks PC ke iPhone"><svg><use href="#i-send"/></svg><span>Tempel</span></button>
@@ -51,6 +51,7 @@
     <div class="rail-group rail-end">
       <button type="button" data-action="update" id="update-button" hidden><svg><use href="#i-update"/></svg><span>Perbarui</span></button>
       <button type="button" data-action="settings" data-tip="Pengaturan"><svg><use href="#i-gear"/></svg><span>Atur</span></button>
+      <button type="button" data-action="focus" data-needs-live data-keys="F11" data-tip="Mode fokus: layar penuh, sidebar di tepi kiri"><svg><use href="#i-expand"/></svg><span>Fokus</span></button>
       <button type="button" data-action="disconnect" data-needs-live data-tip="Putuskan sambungan"><svg><use href="#i-unplug"/></svg><span>Putus</span></button>
       <button type="button" data-action="rail-toggle" class="rail-toggle" id="rail-toggle"><svg><use href="#i-collapse"/></svg><span>Ciut</span></button>
     </div>
@@ -94,6 +95,7 @@
         <canvas id="canvas" width="1179" height="2556"></canvas>
         <div class="marquee" id="marquee" hidden></div>
         <div class="type-chip" id="type-chip" hidden>Mengetik ke iPhone</div>
+        <div class="coach" id="coach" hidden>Klik layar untuk menyentuh dan mengetik. Tekan <kbd>?</kbd> untuk pintasan.</div>
       </div>
     </section>
 
@@ -108,6 +110,14 @@
   </footer>
 
   <div class="tip" id="tip" role="tooltip" hidden><span class="tip-label"></span><span class="tip-keys"></span><span class="tip-note"></span></div>
+
+  <dialog id="keys" aria-labelledby="keys-title">
+    <div class="keys-box">
+      <h2 id="keys-title">Pintasan keyboard</h2>
+      <dl class="keys-list" id="keys-list"></dl>
+      <div class="actions"><button type="button" data-close-keys>Tutup</button></div>
+    </div>
+  </dialog>
 
   <dialog id="settings">
     <form class="settings-form">
@@ -160,7 +170,10 @@
           <span>Periksa otomatis saat Portunus dibuka</span>
         </label>
       </fieldset>
-      <div class="actions"><button type="button" data-close>Selesai</button></div>
+      <div class="actions">
+        <button type="button" class="link" id="open-keys">Pintasan keyboard</button>
+        <button type="button" data-close>Selesai</button>
+      </div>
     </form>
   </dialog>
 </body>

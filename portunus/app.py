@@ -59,6 +59,7 @@ class JsBridge:
         self._token = token
         self._origin = origin
         self._window = None
+        self._fullscreen = False
 
     def _on_own_page(self) -> bool:
         # pywebview exposes this object to whatever page the window shows. The
@@ -75,6 +76,15 @@ class JsBridge:
             log.warning("token request from a foreign page refused")
             return {"token": "", "version": __version__}
         return {"token": self._token, "version": __version__}
+
+    def set_fullscreen(self, on: bool) -> dict:
+        """Focus mode: make the window full screen (or restore it)."""
+        if not self._on_own_page() or not isinstance(on, bool):
+            return {"ok": False}
+        if on != self._fullscreen:
+            self._window.toggle_fullscreen()
+            self._fullscreen = on
+        return {"ok": True, "fullscreen": self._fullscreen}
 
     def save_screenshot(self, data_url: str) -> dict:
         import webview

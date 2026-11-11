@@ -96,7 +96,13 @@ Player.prototype.loop = async function () {
     const d = window.__device || { w: 1179, h: 2556, label: "iPhone 15" };
     if (frame.width !== d.w || frame.height !== d.h) { frame.width = d.w; frame.height = d.h; }
     simPaint(frame, d, performance.now());
-    if (d.collapse) { // mimic iOS resolution collapse: small picture top-left, gray padding
+    if (d.sideways) { // YouTube full screen: landscape picture drawn sideways in a portrait buffer
+      const L = document.createElement("canvas"); L.width = frame.height; L.height = frame.width;
+      simPaint(L, {label: d.label, android: false}, performance.now());
+      const g = frame.getContext("2d"); g.save(); g.translate(frame.width, 0); g.rotate(Math.PI / 2);
+      g.drawImage(L, 0, 0); g.restore();
+    }
+        if (d.collapse) { // mimic iOS resolution collapse: small picture top-left, gray padding
       const tmp = document.createElement("canvas"); tmp.width = frame.width; tmp.height = frame.height;
       tmp.getContext("2d").drawImage(frame, 0, 0);
       const g = frame.getContext("2d");
@@ -243,15 +249,18 @@ def check_rail(driver, mock: Mock) -> list[str]:
     set_viewport(driver, 1120, 1000)
     mock.state.update(phase="idle", device={})
     time.sleep(1.3)
-    lock = driver.find_element(By.CSS_SELECTOR, '[data-action="lock"]')
-    ActionChains(driver).move_to_element(lock).perform()
-    time.sleep(0.75)
-    st = driver.execute_script(RAIL_STATE, lock)
-    if not (st["tip"] and st["label"] == "Kunci iPhone" and st["note"] == "Sambungkan iPhone dulu"):
-        problems.append(f"tooltip tombol nonaktif salah: {st}")
+    hidden = driver.execute_script("""return ['home','lock','shot','rotate','focus','disconnect']
+        .map(a => document.querySelector(`[data-action="${a}"]`).getBoundingClientRect().height)""")
+    if any(h > 0 for h in hidden):
+        problems.append(f"kontrol iPhone masih tampil saat offline: {hidden}")
     go_live(driver, mock)
     time.sleep(0.5)
-    for action, label, keys in [("home", "Beranda", ["Ctrl", "Shift", "H"]), ("rotate-right", "Putar kanan", ["Ctrl", "Shift", "]"]),
+    if driver.execute_script("return document.getElementById('coach').hidden"):
+        problems.append("coach mark tidak muncul saat pertama tersambung")
+    time.sleep(5.6)
+    if not driver.execute_script("return document.getElementById('coach').hidden"):
+        problems.append("coach mark tidak memudar")
+    for action, label, keys in [("home", "Beranda", ["Ctrl", "Shift", "H"]), ("rotate", "Putar tampilan (Shift-klik: arah sebaliknya)", ["Ctrl", "Shift", "]"]),
                                 ("shot", "Simpan tangkapan layar", ["Ctrl", "Shift", "S"]), ("settings", "Pengaturan", [])]:
         btn = driver.find_element(By.CSS_SELECTOR, f'[data-action="{action}"]')
         ActionChains(driver).move_to_element(btn).perform()
@@ -368,6 +377,75 @@ def check_frame_fix(driver) -> list[str]:
     return problems
 
 
+VIEW_JS = """
+const done = arguments[arguments.length - 1];
+(async () => {
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  const c = document.getElementById('canvas'), rail = document.getElementById('rail');
+  const rot = document.querySelector('[data-action="rotate"]');
+  const corners = () => { const b = c.getBoundingClientRect();
+    return [window.__ui.toHid(b.left + 0.5, b.top + 0.5), window.__ui.toHid(b.right - 0.5, b.bottom - 0.5)]; };
+  const out = {};
+  window.__device = {w: 1179, h: 2556, label: 'rotasi'}; await wait(300);
+  out.status = getComputedStyle(document.querySelector('.status')).display;
+  out.r0 = [c.width, c.height, ...corners()];
+  rot.click(); await wait(250);
+  out.r90 = [c.width, c.height, window.__ui.player.orientation, ...corners()];
+  rot.dispatchEvent(new MouseEvent('click', {bubbles: true, shiftKey: true})); await wait(250);
+  out.back = window.__ui.player.orientation;
+  rot.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})); await wait(250);
+  out.r270 = [c.width, c.height, window.__ui.player.orientation, ...corners()];
+  rot.click(); await wait(250);
+  const before = c.getBoundingClientRect().height;
+  document.dispatchEvent(new KeyboardEvent('keydown', {code: 'F11', key: 'F11', bubbles: true})); await wait(450);
+  out.focus = {on: document.body.classList.contains('focus'), railRight: rail.getBoundingClientRect().right,
+               grew: c.getBoundingClientRect().height > before};
+  document.dispatchEvent(new PointerEvent('pointermove', {clientX: 3, clientY: 300, bubbles: true})); await wait(350);
+  out.peek = rail.getBoundingClientRect().left;
+  document.dispatchEvent(new KeyboardEvent('keydown', {code: 'F11', key: 'F11', bubbles: true})); await wait(350);
+  out.focusOff = !document.body.classList.contains('focus') && rail.getBoundingClientRect().left === 0;
+  document.getElementById('screen').blur();
+  document.dispatchEvent(new KeyboardEvent('keydown', {key: '?', code: 'Slash', shiftKey: true, bubbles: true})); await wait(250);
+  const keys = document.getElementById('keys');
+  out.keys = {open: keys.open, rows: keys.querySelectorAll('dt').length};
+  keys.close();
+  done(out);
+})().catch(e => done({error: String(e)}));
+"""
+
+
+def check_view(driver) -> list[str]:
+    set_viewport(driver, 1120, 1000)
+    r = driver.execute_async_script(VIEW_JS)
+    if "error" in r:
+        return [f"uji tampilan error: {r['error']}"]
+    p = []
+    near = lambda pt, x, y: abs(pt["x"] - x) < 700 and abs(pt["y"] - y) < 700
+    if r["status"] != "none":
+        p.append("status bar masih tampil")
+    w, h, tl, br = r["r0"]
+    if (w, h) != (1179, 2556) or not (near(tl, 0, 0) and near(br, 65535, 65535)):
+        p.append(f"rotasi 0 salah: {r['r0']}")
+    w, h, o, tl, br = r["r90"]   # click = counter-clockwise: phone's top-right shows at the top-left
+    if (w, h, o) != (2556, 1179, 270) or not (near(tl, 65535, 0) and near(br, 0, 65535)):
+        p.append(f"klik Putar (berlawanan jarum jam) salah: {r['r90']}")
+    if r["back"] != 0:
+        p.append(f"Shift-klik tidak memutar balik: {r['back']}")
+    w, h, o, tl, br = r["r270"]  # right-click = clockwise: phone's bottom-left shows at the top-left
+    if (w, h, o) != (2556, 1179, 90) or not (near(tl, 0, 65535) and near(br, 65535, 0)):
+        p.append(f"klik kanan (searah jarum jam) salah: {r['r270']}")
+    f = r["focus"]
+    if not (f["on"] and f["railRight"] <= 1 and f["grew"]):
+        p.append(f"mode fokus salah: {f}")
+    if abs(r["peek"]) > 1:
+        p.append(f"laci sidebar tidak muncul di tepi kiri: left={r['peek']}")
+    if not r["focusOff"]:
+        p.append("F11 tidak keluar dari mode fokus")
+    if not (r["keys"]["open"] and r["keys"]["rows"] >= 10):
+        p.append(f"lembar pintasan salah: {r['keys']}")
+    return p
+
+
 def run_tests() -> int:
     root, mock = prepare(), Mock()
     server = serve(root, mock)
@@ -382,6 +460,11 @@ def run_tests() -> int:
         failures.extend(rail_problems)
         go_live(driver, mock)
         extra = check_stream(driver)
+        view_problems = check_view(driver)
+        print(f"uji rotasi tampilan + mode fokus + pintasan: {'semua lolos' if not view_problems else 'GAGAL'}")
+        for pr in view_problems:
+            print("  GAGAL", pr)
+        failures.extend(view_problems)
         fix_problems = check_frame_fix(driver)
         print(f"uji koreksi frame WebView2 (VideoFrame asli): {'lolos' if not fix_problems else 'GAGAL'}")
         extra += fix_problems
@@ -486,10 +569,10 @@ def run_rail_video(out: Path) -> int:
         ActionChains(driver).move_by_offset(400, 0).perform()
         grab(1.6)
         caption("Sorotan meluncur mengikuti kursor, tooltip berisi nama + shortcut")
-        for action in ("home", "lock", "volume-up", "volume-down", "rotate-left", "rotate-right", "paste", "copy", "ocr", "shot"):
+        for action in ("home", "lock", "volume-up", "volume-down", "rotate", "paste", "copy", "ocr", "shot", "focus"):
             hover(action, 0.5)
         caption("Ikon bergerak sesuai fungsinya: putar, volume, gear")
-        for action in ("rotate-left", "rotate-right", "settings"):
+        for action in ("rotate", "settings"):
             hover(action, 0.7)
         caption("Aksi selesai: ikon berubah jadi tanda centang")
         ActionChains(driver).move_to_element(driver.find_element(By.CSS_SELECTOR, '[data-action="shot"]')).click().perform()

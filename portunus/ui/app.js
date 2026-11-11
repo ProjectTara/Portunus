@@ -13,10 +13,11 @@ const ui = {
   updateCheck: $("#update-check"), updateInstall: $("#update-install"),
   versionCurrent: $("#version-current"),
   typeChip: $("#type-chip"),
+  coach: $("#coach"),
+  keys: $("#keys"),
 };
 
 const BUSY = ["pairing", "tunnel", "mounting", "starting"];
-const TURN_DEGREES = { portrait: 0, landscapeRight: 90, portraitUpsideDown: 180, landscapeLeft: 270 };
 const MAX_FRAME = 8 * 1024 * 1024;
 const MAX_DECODE_QUEUE = 12;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -101,8 +102,10 @@ class Player {
   start() {
     if (this.running) return;
     this.running = true;
+    this.orientation = 0; // view rotation starts upright for every session
     this.abort = new AbortController();
     this.fpsTimer = setInterval(() => {
+      this.fpsNow = this.frames;
       ui.fps.textContent = this.frames ? `${this.frames} fps` : "";
       this.frames = 0;
     }, 1000);
@@ -328,9 +331,11 @@ class Player {
     if (!frame) return;
     const w = frame.displayWidth;
     const h = frame.displayHeight;
-    // When iOS renders natively in landscape the buffer is already upright;
-    // only a portrait buffer on a turned device needs rotating here.
-    const r = w > h ? 0 : this.orientation;
+    // orientation = the view rotation chosen in the rail. iOS keeps sending a
+    // portrait buffer even when an app (YouTube full screen) draws sideways,
+    // and the device cannot be asked which way it is held, so the user turns
+    // the view; touches are mapped back through the same rotation.
+    const r = this.orientation;
     const sideways = r % 180 !== 0;
     const cw = sideways ? h : w;
     const ch = sideways ? w : h;
@@ -385,7 +390,7 @@ const diag = {
       `isi     ${p.crop ? `${p.crop[0]}x${p.crop[1]} (collapse diregangkan)` : "penuh"}`,
       `sps     ${p.streamSize ? `${p.streamSize.width}x${p.streamSize.height} (coded ${p.streamSize.codedWidth}x${p.streamSize.codedHeight})` : "-"}  dikoreksi ${p.corrected || 0} frame`,
       `canvas  ${ui.canvas.width}x${ui.canvas.height}  tampil ${Math.round(c.width)}x${Math.round(c.height)}`,
-      `area    ${Math.round(a.width)}x${Math.round(a.height)}  dpr ${devicePixelRatio}`,
+      `area    ${Math.round(a.width)}x${Math.round(a.height)}  dpr ${devicePixelRatio}  ${p.fpsNow ?? 0} fps`,
       `arah    iPhone ${p.orientation}°  rotasi ${p.rotation}°  pantulan ${settings.reflection ? "ya" : "tidak"}`,
     ].join("\n");
   },
@@ -556,13 +561,30 @@ const SHORTCUTS = {
   KeyC: () => copyFromPhone(),
   KeyO: () => startPick(),
   KeyS: () => saveScreenshot(),
-  BracketLeft: () => rotate("left"),
-  BracketRight: () => rotate("right"),
+  BracketRight: () => rotate("left"),  // same as clicking Putar
+  BracketLeft: () => rotate("right"),   // the other way
   KeyD: () => diag.toggle(),
 };
 
 document.addEventListener("keydown", (e) => {
-  if (state.phase !== "live" || ui.dialog.open) return;
+  if (ui.dialog.open || ui.keys.open) return;
+  const typing = document.activeElement === ui.screen;
+  if (e.code === "F11" && state.phase === "live") { // never forwarded to the phone
+    e.preventDefault();
+    toggleFocus();
+    return;
+  }
+  if (!typing && e.key === "?" && !e.ctrlKey && !e.altKey) {
+    e.preventDefault();
+    openKeys();
+    return;
+  }
+  if (!typing && e.code === "Escape" && document.body.classList.contains("focus")) {
+    e.preventDefault();
+    toggleFocus(false);
+    return;
+  }
+  if (state.phase !== "live") return;
   if (e.code === "Escape" && ui.screen.classList.contains("picking")) {
     e.preventDefault();
     stopPick();
@@ -618,18 +640,11 @@ function pressButton(name) {
   input.send("/m/button", { name, state: "press" });
 }
 
-async function rotate(direction) {
-  try {
-    const res = await fetch("/m/rotate", { method: "POST", headers: headers(true), body: JSON.stringify({ direction }) });
-    if (!res.ok) throw new Error();
-    const data = await res.json();
-    const deg = TURN_DEGREES[data.currentDeviceOrientation];
-    if (deg !== undefined) player.orientation = deg;
-    flash(`rotate-${direction}`, true);
-  } catch {
-    toast("iPhone tidak mau diputar sekarang.", true);
-    flash(`rotate-${direction}`, false);
-  }
+function rotate(direction) {
+  player.orientation = (player.orientation + (direction === "left" ? 270 : 90)) % 360;
+  player.lastPli = 0;
+  player.requestKeyframe(); // redraw now, even if the phone screen is still
+  flash("rotate", true);
 }
 
 async function pasteToPhone() {
@@ -738,8 +753,10 @@ const ACTIONS = {
   lock: () => pressButton("lock"),
   "volume-up": () => pressButton("volume-up"),
   "volume-down": () => pressButton("volume-down"),
-  "rotate-left": () => rotate("left"),
-  "rotate-right": () => rotate("right"),
+  // Default turn is counter-clockwise: it uprights YouTube's full-screen
+  // picture, which iOS draws clockwise-sideways in the portrait buffer.
+  rotate: (e) => rotate(e?.shiftKey ? "right" : "left"),
+  focus: () => toggleFocus(),
   paste: pasteToPhone,
   copy: copyFromPhone,
   ocr: () => (ui.screen.classList.contains("picking") ? stopPick() : startPick()),
@@ -861,7 +878,15 @@ rail.addEventListener("click", (e) => {
   const button = e.target.closest("button[data-action]");
   if (!button || unavailable(button)) return;
   if (button.hasAttribute("data-repeat") && e.detail > 0) return; // handled on pointerdown
-  ACTIONS[button.dataset.action]?.();
+  ACTIONS[button.dataset.action]?.(e);
+});
+
+// Right-click on Putar turns the other way.
+rail.addEventListener("contextmenu", (e) => {
+  const button = e.target.closest('button[data-action="rotate"]');
+  if (!button) return;
+  e.preventDefault();
+  if (!unavailable(button)) rotate("right");
 });
 
 // A finished action briefly turns its icon into a check (or a cross).
@@ -882,6 +907,7 @@ function flash(action, ok) {
 }
 
 function paintRail(live) {
+  rail.querySelectorAll("[data-needs-live] button, button[data-needs-live]").forEach((b, i) => b.style.setProperty("--i", i));
   rail.querySelectorAll("[data-needs-live] button, button[data-needs-live]").forEach((b) => {
     b.setAttribute("aria-disabled", String(!live));
   });
@@ -1118,9 +1144,11 @@ function render() {
 
   if (live && !player.running) {
     player.start();
+    showCoach();
     ui.hint.textContent = "Klik layar untuk mengetik";
   } else if (!live && player.running) {
     player.stop();
+    toggleFocus(false);
     stopPick();
     dropHeldKeys();
     touching = false;
@@ -1178,6 +1206,62 @@ ui.reveal.addEventListener("click", async () => {
     ui.reveal.disabled = false;
   }
 });
+
+// ---------------------------------------------------------------- focus mode
+// Full screen with only the phone. The rail becomes a drawer that slides in
+// when the pointer touches the left edge; F11 or Esc leaves.
+function toggleFocus(force) {
+  const on = force ?? !document.body.classList.contains("focus");
+  if (on === document.body.classList.contains("focus")) return;
+  document.body.classList.toggle("focus", on);
+  document.body.classList.remove("rail-peek");
+  bridge?.set_fullscreen?.(on);
+  if (on) toast("Mode fokus. Arahkan kursor ke tepi kiri untuk kontrol, F11 untuk keluar.", false, 3200);
+}
+
+let peekTimer = 0;
+document.addEventListener("pointermove", (e) => {
+  if (!document.body.classList.contains("focus")) return;
+  if (e.clientX <= 12) {
+    clearTimeout(peekTimer);
+    document.body.classList.add("rail-peek");
+  }
+});
+rail.addEventListener("pointerenter", () => clearTimeout(peekTimer));
+rail.addEventListener("pointerleave", () => {
+  if (!document.body.classList.contains("focus")) return;
+  peekTimer = setTimeout(() => document.body.classList.remove("rail-peek"), 350);
+});
+
+// ---------------------------------------------------------------- coach & keys
+let coachShown = false;
+function showCoach() {
+  if (coachShown) return;
+  coachShown = true;
+  ui.coach.hidden = false;
+  setTimeout(() => ui.coach.classList.add("leaving"), 5200);
+  setTimeout(() => { ui.coach.hidden = true; ui.coach.classList.remove("leaving"); }, 5700);
+}
+
+function openKeys() {
+  const rows = [...rail.querySelectorAll("button[data-keys]")]
+    .filter((b) => b.dataset.keys)
+    .map((b) => [b.dataset.keys, labelOf(b)]);
+  rows.push(["Ctrl Shift [", "Putar tampilan ke arah sebaliknya"], ["Ctrl Shift D", "Panel diagnostik"],
+    ["Esc", "Keluar mode fokus / batal pilih area"], ["?", "Lembar ini"]);
+  const list = $("#keys-list");
+  list.replaceChildren(...rows.flatMap(([keys, label]) => {
+    const dt = document.createElement("dt");
+    dt.append(...keys.split(" ").map((k) => Object.assign(document.createElement("kbd"), { textContent: k })));
+    const dd = document.createElement("dd");
+    dd.textContent = label;
+    return [dt, dd];
+  }));
+  if (ui.dialog.open) ui.dialog.close();
+  ui.keys.showModal();
+}
+ui.keys.querySelector("[data-close-keys]").addEventListener("click", () => ui.keys.close());
+$("#open-keys").addEventListener("click", openKeys);
 
 // ---------------------------------------------------------------- boot
 function waitForBridge(timeout = 10000) {
