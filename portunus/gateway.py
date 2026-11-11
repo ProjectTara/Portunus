@@ -528,8 +528,8 @@ class Gateway:
     async def _diag(self, request: Request) -> dict:
         """Frame geometry from the UI, logged for support. Numbers only, no content."""
         data = request.json()
-        allowed = {"display", "coded", "visible", "canvas", "orientation", "codec", "crop"}
-        clean = {k: v for k, v in data.items() if k in allowed and isinstance(v, (int, float, str, list, type(None)))}
+        allowed = {"display", "coded", "visible", "canvas", "orientation", "codec", "crop", "sps", "corrected"}
+        clean = {k: v for k, v in data.items() if k in allowed and isinstance(v, (bool, int, float, str, list, type(None)))}
         log.info("frame geometry: %s", json.dumps(clean)[:600])
         return {"ok": True}
 

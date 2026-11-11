@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "portunus-mirror"
-version = "0.3.5"
+version = "0.3.6"
 description = "Mirror and control an iPhone from a Windows PC over USB."
 readme = "README.md"
 license = { text = "GPL-3.0-only" }

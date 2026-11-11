@@ -1,4 +1,5 @@
 import { usageFor, CMD_LEFT, KEY_C, KEY_V } from "./hid.js";
+import { hevcSize } from "./hevc.js";
 
 const $ = (sel) => document.querySelector(sel);
 const ui = {
@@ -126,7 +127,24 @@ class Player {
         if (res.ok) {
           const { codec, description } = await res.json();
           const bytes = Uint8Array.from(atob(description), (c) => c.charCodeAt(0));
-          return { codec, description: bytes, optimizeForLatency: true };
+          const config = { codec, description: bytes, optimizeForLatency: true };
+          // Give the decoder the real picture size from the SPS. Without it the
+          // WebView2 hardware HEVC path assumes 1280x720 and crops the phone
+          // screen to its top 720 rows (seen in the field: display 1280x720,
+          // visibleRect 1184x720, coded 1184x2576).
+          try {
+            const size = hevcSize(bytes);
+            Object.assign(config, {
+              codedWidth: size.codedWidth,
+              codedHeight: size.codedHeight,
+              displayAspectWidth: size.width,
+              displayAspectHeight: size.height,
+            });
+            this.streamSize = size;
+          } catch {
+            this.streamSize = null; // unknown layout: decode without hints, as before
+          }
+          return config;
         }
       } catch (err) {
         if (err.name === "AbortError") return null;
@@ -233,7 +251,31 @@ class Player {
     }
   }
 
-  onFrame(frame) {
+  // Second line of defence: if the decoder still reports a smaller visible
+  // area than the SPS says, re-wrap the frame with the right visible rect.
+  // Allowed by WebCodecs as long as it lies inside the coded frame.
+  fixFrame(frame) {
+    const s = this.streamSize;
+    if (!s || !(frame.codedWidth >= s.width && frame.codedHeight >= s.height)) return frame;
+    const v = frame.visibleRect;
+    if (v && v.x === 0 && v.y === 0 && v.width === s.width && v.height === s.height
+        && frame.displayWidth === s.width && frame.displayHeight === s.height) return frame;
+    try {
+      const fixed = new VideoFrame(frame, {
+        visibleRect: { x: 0, y: 0, width: s.width, height: s.height },
+        displayWidth: s.width,
+        displayHeight: s.height,
+      });
+      frame.close();
+      this.corrected = (this.corrected || 0) + 1;
+      return fixed;
+    } catch {
+      return frame;
+    }
+  }
+
+  onFrame(rawFrame) {
+    const frame = this.fixFrame(rawFrame);
     this.frames += 1;
     this.pending?.close();
     this.pending = frame;
@@ -341,6 +383,7 @@ const diag = {
       `frame   ${frame.displayWidth}x${frame.displayHeight}  coded ${frame.codedWidth ?? "-"}x${frame.codedHeight ?? "-"}`,
       `visible ${frame.visibleRect ? `${frame.visibleRect.x},${frame.visibleRect.y} ${frame.visibleRect.width}x${frame.visibleRect.height}` : "-"}  codec ${p.config?.codec || "-"}`,
       `isi     ${p.crop ? `${p.crop[0]}x${p.crop[1]} (collapse diregangkan)` : "penuh"}`,
+      `sps     ${p.streamSize ? `${p.streamSize.width}x${p.streamSize.height} (coded ${p.streamSize.codedWidth}x${p.streamSize.codedHeight})` : "-"}  dikoreksi ${p.corrected || 0} frame`,
       `canvas  ${ui.canvas.width}x${ui.canvas.height}  tampil ${Math.round(c.width)}x${Math.round(c.height)}`,
       `area    ${Math.round(a.width)}x${Math.round(a.height)}  dpr ${devicePixelRatio}`,
       `arah    iPhone ${p.orientation}°  rotasi ${p.rotation}°  pantulan ${settings.reflection ? "ya" : "tidak"}`,
@@ -361,6 +404,8 @@ function reportGeometry(frame, p) {
     orientation: p.orientation,
     codec: p.config?.codec || null,
     crop: p.crop || null,
+    sps: p.streamSize ? [p.streamSize.width, p.streamSize.height] : null,
+    corrected: Boolean(p.corrected),
   };
   const key = JSON.stringify(info);
   if (key === lastGeometry) return;

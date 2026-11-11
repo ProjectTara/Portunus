@@ -92,6 +92,7 @@ function simPaint(c, d, t) {
 Player.prototype.loop = async function () {
   const frame = document.createElement("canvas");
   while (this.running) {
+    if (window.__pauseSim) { await sleep(40); continue; }
     const d = window.__device || { w: 1179, h: 2556, label: "iPhone 15" };
     if (frame.width !== d.w || frame.height !== d.h) { frame.width = d.w; frame.height = d.h; }
     simPaint(frame, d, performance.now());
@@ -317,6 +318,56 @@ def check_stream(driver) -> list[str]:
     return problems
 
 
+FRAME_FIX_JS = """
+const done = arguments[arguments.length - 1];
+(async () => {
+  window.__pauseSim = true;
+  await new Promise(r => setTimeout(r, 120));
+  const W = 1184, H = 2576, p = window.__ui.player, c = document.getElementById('canvas');
+  const mk = () => {           // coded 1184x2576: top 720 rows red, rest blue
+    const src = document.createElement('canvas'); src.width = W; src.height = H;
+    const g = src.getContext('2d');
+    g.fillStyle = 'rgb(220,30,30)'; g.fillRect(0, 0, W, 720);
+    g.fillStyle = 'rgb(30,60,220)'; g.fillRect(0, 720, W, H - 720);
+    const vf = new VideoFrame(src, {timestamp: 0});
+    // what WebView2's decoder reported in the field
+    const bad = new VideoFrame(vf, {visibleRect: {x: 0, y: 0, width: 1184, height: 720}, displayWidth: 1280, displayHeight: 720});
+    vf.close(); return bad;
+  };
+  const show = async (frame) => {
+    p.onFrame(frame);
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const px = c.getContext('2d').getImageData(Math.floor(c.width / 2), c.height - 40, 1, 1).data;
+    return {canvas: [c.width, c.height], bottom: [px[0], px[1], px[2]]};
+  };
+  const out = {};
+  p.streamSize = null; p.corrected = 0;
+  out.control = await show(mk());
+  p.streamSize = {codedWidth: W, codedHeight: H, width: W, height: H};
+  out.fixed = await show(mk());
+  out.corrected = p.corrected;
+  p.streamSize = null; window.__pauseSim = false;
+  done(out);
+})().catch(e => done({error: String(e)}));
+"""
+
+
+def check_frame_fix(driver) -> list[str]:
+    r = driver.execute_async_script(FRAME_FIX_JS)
+    problems = []
+    if "error" in r:
+        return [f"uji VideoFrame error: {r['error']}"]
+    print(f"  kontrol tanpa SPS : canvas {r['control']['canvas']}, piksel bawah {r['control']['bottom']}")
+    print(f"  dengan koreksi SPS: canvas {r['fixed']['canvas']}, piksel bawah {r['fixed']['bottom']}, dikoreksi {r['corrected']}")
+    if r["control"]["canvas"] != [1280, 720]:
+        problems.append(f"kontrol tidak meniru bug: {r['control']}")
+    if r["fixed"]["canvas"] != [1184, 2576] or not (r["fixed"]["bottom"][2] > 150 and r["fixed"]["bottom"][0] < 80):
+        problems.append(f"koreksi gagal: {r['fixed']}")
+    if r["corrected"] != 1:
+        problems.append("frame tidak tercatat dikoreksi")
+    return problems
+
+
 def run_tests() -> int:
     root, mock = prepare(), Mock()
     server = serve(root, mock)
@@ -331,6 +382,9 @@ def run_tests() -> int:
         failures.extend(rail_problems)
         go_live(driver, mock)
         extra = check_stream(driver)
+        fix_problems = check_frame_fix(driver)
+        print(f"uji koreksi frame WebView2 (VideoFrame asli): {'lolos' if not fix_problems else 'GAGAL'}")
+        extra += fix_problems
         print(f"uji collapse + diagnostik: {'semua lolos' if not extra else 'GAGAL'}")
         for p in extra:
             print("  GAGAL", p)
