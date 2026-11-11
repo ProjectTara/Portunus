@@ -2,6 +2,9 @@
 # Python 3.10 - 3.13 (3.12 recommended). Windows 10/11 64-bit.
 pymobiledevice3==11.45.0
 pywebview==6.1
+# pymobiledevice3 11.45 calls srptools' 1.x API; srptools 2.0.0 (2026-10-26) changed
+# verify_proof() so every Wi-Fi pair-setup fails with AssertionError. Keep 1.0.1.
+srptools==1.0.1
 
 # Windows-only features: OCR, Bluetooth audio. The app runs without them.
 winrt-runtime==3.2.1; sys_platform == "win32"

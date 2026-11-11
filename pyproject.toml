@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "portunus-mirror"
-version = "0.3.0"
+version = "0.3.2"
 description = "Mirror and control an iPhone from a Windows PC over USB."
 readme = "README.md"
 license = { text = "GPL-3.0-only" }
@@ -12,6 +12,7 @@ requires-python = ">=3.10,<3.14"
 dependencies = [
     "pymobiledevice3==11.45.0",
     "pywebview==6.1",
+    "srptools==1.0.1",
 ]
 
 [project.optional-dependencies]

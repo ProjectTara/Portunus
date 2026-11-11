@@ -413,6 +413,7 @@ class Gateway:
         try:
             await self.core.enable_wifi(udid)
         except Exception as exc:  # noqa: BLE001
+            log.warning("wifi enable failed: %s", type(exc).__name__, exc_info=True)
             raise HttpError(409, explain(exc)) from exc
         return {"ok": True}
 

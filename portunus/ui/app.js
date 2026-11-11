@@ -243,6 +243,42 @@ class Player {
     }
   }
 
+  // Under fast motion iOS may encode a smaller picture into the TOP-LEFT of
+  // the usual buffer and fill the rest with flat gray (128,128,128). Find the
+  // picture's right and bottom edges on a small copy of the frame.
+  collapseCheck(frame, w, h) {
+    const PH = 160;
+    const PW = Math.max(8, Math.round((PH * w) / h));
+    const probe = this.probe || (this.probe = document.createElement("canvas"));
+    const pctx = this.probeCtx || (this.probeCtx = probe.getContext("2d", { willReadFrequently: true }));
+    probe.width = PW;
+    probe.height = PH;
+    try {
+      pctx.drawImage(frame, 0, 0, PW, PH);
+      const px = pctx.getImageData(0, 0, PW, PH).data;
+      const gray = (x, y) => {
+        const i = (y * PW + x) * 4;
+        return Math.abs(px[i] - 128) < 6 && Math.abs(px[i + 1] - 128) < 6 && Math.abs(px[i + 2] - 128) < 6;
+      };
+      let right = 0;
+      for (let x = 0; x < PW; x += 1) {
+        let g = 0; let n = 0;
+        for (let y = 0; y < PH; y += 3) { n += 1; if (gray(x, y)) g += 1; }
+        if (g / n < 0.6) right = x;
+      }
+      let bottom = 0;
+      for (let y = 0; y < PH; y += 1) {
+        let g = 0; let n = 0;
+        for (let x = 0; x < PW; x += 3) { n += 1; if (gray(x, y)) g += 1; }
+        if (g / n < 0.6) bottom = y;
+      }
+      const cw = Math.round(((right + 1) / PW) * w);
+      const ch = Math.round(((bottom + 1) / PH) * h);
+      if (cw > w * 0.2 && cw < w * 0.92 && ch > h * 0.2 && ch < h * 0.92) return [cw, ch];
+    } catch { /* readback can fail transiently; draw the full frame */ }
+    return null;
+  }
+
   draw() {
     this.drawScheduled = false;
     const frame = this.pending;
@@ -262,9 +298,13 @@ class Player {
       fitCanvas(); // the frame turned or changed size
     }
     const ctx = this.ctx;
+    // Resolution collapse: draw only the real picture, stretched to the full size.
+    const crop = this.collapseCheck(frame, w, h);
     ctx.setTransform(1, 0, 0, 1, cw / 2, ch / 2);
     ctx.rotate((r * Math.PI) / 180);
-    ctx.drawImage(frame, -w / 2, -h / 2, w, h);
+    ctx.drawImage(frame, 0, 0, crop ? crop[0] : w, crop ? crop[1] : h, -w / 2, -h / 2, w, h);
+    this.crop = crop;
+    diag.update(frame, this);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.frameW = w;
     this.frameH = h;
@@ -272,6 +312,39 @@ class Player {
     frame.close();
   }
 }
+
+// Diagnostics (Ctrl+Shift+D): the numbers needed to explain any odd picture
+// from one screenshot, without guessing.
+let appVersion = "?";
+const diag = {
+  el: null,
+  last: 0,
+  toggle() {
+    if (!this.el) {
+      this.el = document.createElement("pre");
+      this.el.className = "diag";
+      ui.screen.append(this.el);
+    } else {
+      this.el.remove();
+      this.el = null;
+    }
+  },
+  update(frame, p) {
+    if (!this.el || performance.now() - this.last < 250) return;
+    this.last = performance.now();
+    const c = ui.canvas.getBoundingClientRect();
+    const a = ui.screen.getBoundingClientRect();
+    const engine = (navigator.userAgent.match(/(Edg|Chrome|Firefox)\/[\d.]+/) || ["?"])[0];
+    this.el.textContent = [
+      `Portunus ${appVersion}  ${engine}`,
+      `frame   ${frame.displayWidth}x${frame.displayHeight}  coded ${frame.codedWidth ?? "-"}x${frame.codedHeight ?? "-"}`,
+      `isi     ${p.crop ? `${p.crop[0]}x${p.crop[1]} (collapse diregangkan)` : "penuh"}`,
+      `canvas  ${ui.canvas.width}x${ui.canvas.height}  tampil ${Math.round(c.width)}x${Math.round(c.height)}`,
+      `area    ${Math.round(a.width)}x${Math.round(a.height)}  dpr ${devicePixelRatio}`,
+      `arah    iPhone ${p.orientation}°  rotasi ${p.rotation}°  pantulan ${settings.reflection ? "ya" : "tidak"}`,
+    ].join("\n");
+  },
+};
 
 const player = new Player(ui.canvas);
 
@@ -418,6 +491,7 @@ const SHORTCUTS = {
   KeyS: () => saveScreenshot(),
   BracketLeft: () => rotate("left"),
   BracketRight: () => rotate("right"),
+  KeyD: () => diag.toggle(),
 };
 
 document.addEventListener("keydown", (e) => {
@@ -484,8 +558,10 @@ async function rotate(direction) {
     const data = await res.json();
     const deg = TURN_DEGREES[data.currentDeviceOrientation];
     if (deg !== undefined) player.orientation = deg;
+    flash(`rotate-${direction}`, true);
   } catch {
     toast("iPhone tidak mau diputar sekarang.", true);
+    flash(`rotate-${direction}`, false);
   }
 }
 
@@ -494,8 +570,10 @@ async function pasteToPhone() {
     const { chars } = await api("/api/clipboard/to-phone", {});
     await chord(CMD_LEFT, KEY_V);
     toast(`Teks PC ditempel di iPhone (${chars} karakter).`);
+    flash("paste", true);
   } catch (err) {
     toast(err.message, true);
+    flash("paste", false);
   }
 }
 
@@ -505,15 +583,17 @@ async function copyFromPhone() {
     await sleep(350);
     const { chars } = await api("/api/clipboard/from-phone", {});
     toast(`Clipboard iPhone disalin ke PC (${chars} karakter).`);
+    flash("copy", true);
   } catch (err) {
     toast(err.message, true);
+    flash("copy", false);
   }
 }
 
 async function saveScreenshot() {
   try {
     const result = await bridge.save_screenshot(ui.canvas.toDataURL("image/png"));
-    if (result.ok) toast(`Disimpan sebagai ${result.name}.`);
+    if (result.ok) { toast(`Disimpan sebagai ${result.name}.`); flash("shot", true); }
     else if (!result.cancelled) toast(result.error, true);
   } catch {
     toast("Gambar tidak bisa disimpan.", true);
@@ -576,6 +656,7 @@ async function finishPick(x, y) {
   try {
     const result = await api("/api/ocr", { png });
     toast(result.chars ? `Teks terbaca dan disalin ke PC (${result.lines} baris).` : "Tidak ada teks yang terbaca di area itu.", !result.chars);
+    flash("ocr", Boolean(result.chars));
   } catch (err) {
     toast(err.message, true);
   }
@@ -599,27 +680,166 @@ const ACTIONS = {
   settings: openSettings,
   update: () => openSettings(),
   disconnect: async () => { await api("/api/disconnect", {}).catch(() => {}); refresh(); },
+  "focus-screen": () => { if (state.phase === "live") ui.screen.focus({ preventScroll: true }); },
+  "rail-toggle": async () => {
+    try { settings = await api("/api/settings", { railCompact: !settings.railCompact }); } catch { settings.railCompact = !settings.railCompact; }
+    applySettings();
+    hideTip();
+  },
 };
 
-// Every rail button keeps a readable name when its label is hidden on short
-// windows: the tooltip shows the name (and the shortcut, if any).
-document.querySelectorAll(".rail button").forEach((button) => {
-  const label = button.querySelector("span")?.textContent.trim();
-  if (!label) return;
-  button.setAttribute("aria-label", label);
-  button.title = button.title ? `${label} (${button.title})` : label;
+// ---------------------------------------------------------------- rail
+const rail = $("#rail");
+const indicator = $("#rail-indicator");
+const tip = $("#tip");
+const railButtons = () => [...rail.querySelectorAll("button")].filter((b) => !b.hidden);
+let tipTimer = 0;
+let hovered = null; // the rail button under the pointer or keyboard focus
+
+// Every button keeps a readable name when labels are hidden; the shortcut
+// shows in the tooltip instead of a native title (titles never appear on
+// unavailable buttons, which is exactly when an explanation is needed).
+function labelOf(button) {
+  return button.dataset.tip
+    || button.querySelector(":scope > span:not(.head-phone):not(.head-text)")?.textContent.trim()
+    || button.getAttribute("aria-label") || "";
+}
+railButtons().forEach((b) => { if (!b.hasAttribute("aria-label")) b.setAttribute("aria-label", labelOf(b)); });
+
+function unavailable(button) {
+  return button.getAttribute("aria-disabled") === "true";
+}
+
+function moveIndicator(button) {
+  if (!button) { indicator.classList.remove("on"); return; }
+  const r = rail.getBoundingClientRect();
+  const b = button.getBoundingClientRect();
+  indicator.style.width = `${b.width}px`;
+  indicator.style.height = `${b.height}px`;
+  indicator.style.transform = `translate(${b.left - r.left + rail.scrollLeft}px, ${b.top - r.top + rail.scrollTop}px)`;
+  indicator.classList.toggle("muted", unavailable(button));
+  indicator.classList.add("on");
+}
+
+function showTip(button) {
+  if (!button || matchMedia("(max-width: 640px)").matches) return; // no tooltips on the narrow layout
+  const keys = (button.dataset.keys || "").split(" ").filter(Boolean);
+  tip.querySelector(".tip-label").textContent = button.dataset.action === "focus-screen"
+    ? button.getAttribute("aria-label") : labelOf(button);
+  tip.querySelector(".tip-keys").replaceChildren(...keys.map((k) => Object.assign(document.createElement("kbd"), { textContent: k })));
+  tip.querySelector(".tip-note").textContent = unavailable(button)
+    ? (button.dataset.action === "focus-screen" ? "" : "Sambungkan iPhone dulu") : "";
+  const b = button.getBoundingClientRect();
+  tip.style.left = `${Math.round(b.right + 10)}px`;
+  tip.style.top = `${Math.round(b.top + b.height / 2)}px`;
+  tip.hidden = false;
+}
+
+function hideTip() {
+  clearTimeout(tipTimer);
+  tip.hidden = true;
+}
+
+function hoverButton(button, instant) {
+  hovered = button;
+  moveIndicator(button);
+  clearTimeout(tipTimer);
+  if (!tip.hidden || instant) showTip(button); // moving along the rail: no delay
+  else tipTimer = setTimeout(() => showTip(button), 320);
+}
+
+rail.addEventListener("pointerover", (e) => {
+  if (e.pointerType === "touch") return;
+  const button = e.target.closest("button");
+  if (button && rail.contains(button)) hoverButton(button, false);
+});
+rail.addEventListener("pointerleave", () => { hovered = null; moveIndicator(null); hideTip(); });
+
+// The rail changes size (collapse, window resize): put the highlight back on
+// the button it belongs to instead of leaving it where that button used to be.
+function realignIndicator() {
+  requestAnimationFrame(() => {
+    indicator.classList.add("snap"); // jump, do not glide across the changed layout
+    moveIndicator(hovered && rail.contains(hovered) && !hovered.hidden ? hovered : null);
+    requestAnimationFrame(() => requestAnimationFrame(() => indicator.classList.remove("snap")));
+  });
+}
+new ResizeObserver(realignIndicator).observe(rail);
+rail.addEventListener("focusin", (e) => {
+  const button = e.target.closest("button");
+  if (button && e.target.matches(":focus-visible")) hoverButton(button, true);
+});
+rail.addEventListener("focusout", () => {
+  hideTip();
+  if (!rail.matches(":hover")) { hovered = null; moveIndicator(null); }
+});
+rail.addEventListener("scroll", () => { hideTip(); indicator.classList.remove("on"); }, { passive: true });
+window.addEventListener("resize", hideTip);
+
+// Volume repeats while held, like the side buttons on the phone.
+let repeatTimer = 0;
+function stopRepeat() { clearTimeout(repeatTimer); clearInterval(repeatTimer); repeatTimer = 0; }
+rail.addEventListener("pointerdown", (e) => {
+  const button = e.target.closest("button[data-repeat]");
+  if (!button || unavailable(button) || e.button !== 0) return;
+  ACTIONS[button.dataset.action]?.();
+  stopRepeat();
+  repeatTimer = setTimeout(() => {
+    repeatTimer = setInterval(() => ACTIONS[button.dataset.action]?.(), 160);
+  }, 420);
+});
+["pointerup", "pointercancel", "pointerleave"].forEach((type) => rail.addEventListener(type, stopRepeat));
+
+rail.addEventListener("click", (e) => {
+  const button = e.target.closest("button[data-action]");
+  if (!button || unavailable(button)) return;
+  if (button.hasAttribute("data-repeat") && e.detail > 0) return; // handled on pointerdown
+  ACTIONS[button.dataset.action]?.();
 });
 
-document.querySelector(".rail").addEventListener("click", (e) => {
-  const button = e.target.closest("button[data-action]");
-  if (button && !button.disabled) ACTIONS[button.dataset.action]?.();
-});
+// A finished action briefly turns its icon into a check (or a cross).
+function flash(action, ok) {
+  const button = rail.querySelector(`[data-action="${action}"]`);
+  const use = button?.querySelector("use");
+  if (!use) return;
+  if (!button.dataset.icon) button.dataset.icon = use.getAttribute("href");
+  clearTimeout(button._flash);
+  button.classList.remove("done", "fail");
+  void button.offsetWidth;
+  button.classList.add(ok ? "done" : "fail");
+  use.setAttribute("href", ok ? "#i-check" : "#i-cross");
+  button._flash = setTimeout(() => {
+    button.classList.remove("done", "fail");
+    use.setAttribute("href", button.dataset.icon);
+  }, 950);
+}
+
+function paintRail(live) {
+  rail.querySelectorAll("[data-needs-live] button, button[data-needs-live]").forEach((b) => {
+    b.setAttribute("aria-disabled", String(!live));
+  });
+  const head = $("#rail-head");
+  const busy = BUSY.includes(state.phase);
+  const via = state.device?.transport === "wifi" ? "Wi-Fi" : "USB";
+  $("#rail-transport").textContent = live ? via : busy ? "..." : state.phase === "error" ? "Gagal" : "Offline";
+  head.setAttribute("aria-disabled", String(!live));
+  head.setAttribute("aria-label", live
+    ? `${state.device?.name || "iPhone"} lewat ${via}. Klik untuk mengetik ke iPhone`
+    : busy ? "Menghubungkan" : "Belum tersambung");
+  const toggle = $("#rail-toggle");
+  const compact = Boolean(settings.railCompact);
+  toggle.setAttribute("aria-label", compact ? "Lebarkan sidebar" : "Ciutkan sidebar");
+  toggle.dataset.tip = compact ? "Lebarkan sidebar" : "Ciutkan sidebar";
+  toggle.querySelector("span").textContent = compact ? "Lebar" : "Ciut";
+}
 
 // ---------------------------------------------------------------- settings
 function applySettings() {
   if (settings.theme === "system") delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = settings.theme;
   document.body.classList.toggle("reflect", settings.reflection);
+  document.body.classList.toggle("rail-compact", Boolean(settings.railCompact));
+  if (typeof paintRail === "function" && rail) paintRail(state.phase === "live");
   fitCanvas();
 }
 
@@ -827,7 +1047,7 @@ function render() {
   document.body.dataset.phase = state.phase;
   ui.setup.hidden = live;
   ui.live.hidden = !live;
-  document.querySelectorAll("[data-needs-live] button, button[data-needs-live]").forEach((b) => { b.disabled = !live; });
+  paintRail(live);
 
   if (live && !player.running) {
     player.start();
@@ -909,7 +1129,7 @@ function waitForBridge(timeout = 10000) {
 async function boot() {
   try {
     bridge = await waitForBridge();
-    ({ token } = await bridge.session());
+    ({ token, version: appVersion } = await bridge.session());
     if (!token) throw new Error("refused");
   } catch {
     ui.statusText.textContent = "Halaman ini hanya berjalan di dalam aplikasi Portunus.";

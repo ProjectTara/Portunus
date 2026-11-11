@@ -22,28 +22,37 @@
     <symbol id="i-shot" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><circle cx="12" cy="13.5" r="3.5"/><path d="M9 7l1.5-3h3L15 7"/></symbol>
     <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></symbol>
     <symbol id="i-update" viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M5 19h14"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-cross" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+    <symbol id="i-collapse" viewBox="0 0 24 24"><path d="M14 6l-6 6 6 6"/><path d="M19 6v12"/></symbol>
     <symbol id="i-unplug" viewBox="0 0 24 24"><path d="M9 3v4M15 3v4M7 7h10v4a5 5 0 0 1-10 0z"/><path d="M12 16v5"/></symbol>
   </svg>
 
-  <nav class="rail" aria-label="Kontrol iPhone">
+  <nav class="rail" id="rail" aria-label="Kontrol iPhone">
+    <div class="rail-indicator" id="rail-indicator" aria-hidden="true"></div>
+    <button type="button" class="rail-head" data-action="focus-screen" id="rail-head" data-keys="">
+      <span class="head-phone" aria-hidden="true"><span class="head-dot"></span></span>
+      <span class="head-text" id="rail-transport">Offline</span>
+    </button>
     <div class="rail-group" data-needs-live>
-      <button type="button" data-action="home" title="Ctrl+Shift+H"><svg><use href="#i-home"/></svg><span>Beranda</span></button>
-      <button type="button" data-action="lock" title="Ctrl+Shift+L"><svg><use href="#i-lock"/></svg><span>Kunci</span></button>
-      <button type="button" data-action="volume-up"><svg><use href="#i-vol-up"/></svg><span>Keras</span></button>
-      <button type="button" data-action="volume-down"><svg><use href="#i-vol-down"/></svg><span>Pelan</span></button>
-      <button type="button" data-action="rotate-left" title="Ctrl+Shift+["><svg><use href="#i-rot-l"/></svg><span>Putar kiri</span></button>
-      <button type="button" data-action="rotate-right" title="Ctrl+Shift+]"><svg><use href="#i-rot-r"/></svg><span>Putar kanan</span></button>
+      <button type="button" data-action="home" data-keys="Ctrl Shift H"><svg><use href="#i-home"/></svg><span>Beranda</span></button>
+      <button type="button" data-action="lock" data-keys="Ctrl Shift L" data-tip="Kunci iPhone"><svg><use href="#i-lock"/></svg><span>Kunci</span></button>
+      <button type="button" data-action="volume-up" data-repeat data-keys="" data-tip="Volume naik (tahan untuk mengulang)"><svg><use href="#i-vol-up"/></svg><span>Keras</span></button>
+      <button type="button" data-action="volume-down" data-repeat data-keys="" data-tip="Volume turun (tahan untuk mengulang)"><svg><use href="#i-vol-down"/></svg><span>Pelan</span></button>
+      <button type="button" data-action="rotate-left" data-keys="Ctrl Shift [" data-tip="Putar kiri"><svg><use href="#i-rot-l"/></svg><span>Kiri</span></button>
+      <button type="button" data-action="rotate-right" data-keys="Ctrl Shift ]" data-tip="Putar kanan"><svg><use href="#i-rot-r"/></svg><span>Kanan</span></button>
     </div>
     <div class="rail-group" data-needs-live>
-      <button type="button" data-action="paste" title="Ctrl+Shift+V"><svg><use href="#i-send"/></svg><span>Tempel teks PC</span></button>
-      <button type="button" data-action="copy" title="Ctrl+Shift+C"><svg><use href="#i-take"/></svg><span>Salin ke PC</span></button>
-      <button type="button" data-action="ocr" title="Ctrl+Shift+O"><svg><use href="#i-scan"/></svg><span>Baca teks</span></button>
-      <button type="button" data-action="shot" title="Ctrl+Shift+S"><svg><use href="#i-shot"/></svg><span>Simpan layar</span></button>
+      <button type="button" data-action="paste" data-keys="Ctrl Shift V" data-tip="Tempel teks PC ke iPhone"><svg><use href="#i-send"/></svg><span>Tempel</span></button>
+      <button type="button" data-action="copy" data-keys="Ctrl Shift C" data-tip="Salin teks iPhone ke PC"><svg><use href="#i-take"/></svg><span>Salin</span></button>
+      <button type="button" data-action="ocr" data-keys="Ctrl Shift O" data-tip="Baca teks di layar (OCR)"><svg><use href="#i-scan"/></svg><span>Baca</span></button>
+      <button type="button" data-action="shot" data-keys="Ctrl Shift S" data-tip="Simpan tangkapan layar"><svg><use href="#i-shot"/></svg><span>Foto</span></button>
     </div>
     <div class="rail-group rail-end">
       <button type="button" data-action="update" id="update-button" hidden><svg><use href="#i-update"/></svg><span>Perbarui</span></button>
-      <button type="button" data-action="settings"><svg><use href="#i-gear"/></svg><span>Pengaturan</span></button>
-      <button type="button" data-action="disconnect" data-needs-live><svg><use href="#i-unplug"/></svg><span>Putuskan</span></button>
+      <button type="button" data-action="settings" data-tip="Pengaturan"><svg><use href="#i-gear"/></svg><span>Atur</span></button>
+      <button type="button" data-action="disconnect" data-needs-live data-tip="Putuskan sambungan"><svg><use href="#i-unplug"/></svg><span>Putus</span></button>
+      <button type="button" data-action="rail-toggle" class="rail-toggle" id="rail-toggle"><svg><use href="#i-collapse"/></svg><span>Ciut</span></button>
     </div>
   </nav>
 
@@ -97,6 +106,8 @@
     <span class="hint" id="hint"></span>
     <span class="fps" id="fps"></span>
   </footer>
+
+  <div class="tip" id="tip" role="tooltip" hidden><span class="tip-label"></span><span class="tip-keys"></span><span class="tip-note"></span></div>
 
   <dialog id="settings">
     <form class="settings-form">

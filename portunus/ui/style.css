@@ -52,7 +52,7 @@ html, body { height: 100%; margin: 0; }
 
 body {
   display: grid;
-  grid-template-columns: 88px 1fr;
+  grid-template-columns: auto 1fr;
   grid-template-rows: 1fr auto;
   background: var(--ground);
   color: var(--ink);
@@ -60,55 +60,6 @@ body {
 }
 
 .sprite { display: none; }
-
-/* ---- rail -------------------------------------------------------------- */
-.rail {
-  grid-row: 1 / span 2;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  padding: 14px 8px;
-  background: var(--panel);
-  border-right: 1px solid var(--line);
-  overflow-y: auto;
-}
-
-.rail-group { display: flex; flex-direction: column; gap: 2px; }
-.rail-end { margin-top: auto; }
-
-.rail button {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  width: 100%;
-  padding: 8px 2px 7px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--ink);
-  font: inherit;
-  font-size: 11.5px;
-  line-height: 1.2;
-  cursor: pointer;
-}
-
-.rail svg {
-  width: 22px;
-  height: 22px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.rail button:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); }
-.rail button:active { background: color-mix(in srgb, var(--ink) 12%, transparent); }
-.rail button[aria-pressed="true"] { color: var(--live); }
-.rail button:disabled { color: var(--muted); opacity: 0.45; cursor: default; background: transparent; }
-
-:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
 
 /* ---- stage ------------------------------------------------------------- */
 .stage {
@@ -238,6 +189,9 @@ button.link:disabled { color: var(--muted); cursor: default; text-decoration: no
   display: block;
   flex: 0 0 auto;
   /* width and height are set by fitCanvas() in app.js */
+  /* Safety net: if the box ever disagrees with the frame's ratio, letterbox
+     instead of stretching or cropping the phone's picture. */
+  object-fit: contain;
   border-radius: var(--radius);
   background: #000;
   box-shadow: var(--shadow);
@@ -340,10 +294,11 @@ fieldset legend { padding: 0; }
 /* ---- responsive & motion ----------------------------------------------- */
 @media (max-width: 640px) {
   body { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
-  .rail { grid-row: auto; flex-direction: row; gap: 4px; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  .rail { grid-row: auto; width: auto; flex-direction: row; align-items: center; gap: 6px; padding: 8px; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--line); }
   .rail-group { flex-direction: row; }
   .rail-end { margin-top: 0; margin-left: auto; }
-  .rail button { width: 64px; flex: none; }
+  .rail button { width: 60px; flex: none; }
+  .rail-head, .rail-toggle { display: none !important; }
   .stage { padding: 12px; }
   .live { padding: 12px; }
 }
@@ -448,13 +403,247 @@ body[data-phase="live"] .dot { animation: pulse 2.4s ease-out infinite; }
   animation: toast-in var(--dur-in) var(--ease-out);
 }
 
-/* Rail on short windows: icons only (labels live in tooltips and aria-label),
-   so all controls fit without a scrollbar squeezing them. */
-.rail { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
-@media (max-height: 800px) and (min-width: 641px) {
-  .rail { gap: 10px; padding: 10px 8px; }
-  .rail button { padding: 9px 2px; }
-  .rail button span { display: none; }
+
+/* ---- rail (sidebar) ------------------------------------------------------
+   Grouped controls on soft trays. A highlight glides to the hovered or
+   focused button, a tooltip names it with its shortcut (and says why it is
+   unavailable), icons move in a way that hints at what they do, and a
+   finished action briefly turns the icon into a check or a cross. */
+:root { --spring: cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+.rail {
+  grid-row: 1 / span 2;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 96px;
+  padding: 12px 10px;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+.rail-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--ink) 4.5%, transparent);
+}
+.rail-end { margin-top: auto; background: transparent; padding: 0; }
+
+.rail button {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 2px 5px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.rail svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 280ms var(--spring);
+}
+
+.rail button[aria-disabled="true"] { color: var(--muted); opacity: 0.42; cursor: default; }
+.rail button[aria-pressed="true"] { color: var(--live); }
+
+.rail-indicator {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--live) 13%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--live) 28%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 240ms var(--ease-out), width 240ms var(--ease-out), height 240ms var(--ease-out), opacity 140ms ease;
+}
+.rail-indicator.on { opacity: 1; }
+.rail-indicator.snap { transition: none; }
+.rail-indicator.muted { background: color-mix(in srgb, var(--ink) 6%, transparent); box-shadow: none; }
+
+/* icons hint at their action */
+.rail button:not([aria-disabled="true"]):hover svg,
+.rail button:not([aria-disabled="true"]):focus-visible svg { transform: scale(1.12); }
+.rail [data-action="rotate-left"]:not([aria-disabled="true"]):hover svg { transform: rotate(-45deg); }
+.rail [data-action="rotate-right"]:not([aria-disabled="true"]):hover svg { transform: rotate(45deg); }
+.rail [data-action="settings"]:hover svg { transform: rotate(90deg); }
+.rail [data-action="volume-up"]:not([aria-disabled="true"]):hover svg { transform: translateY(-2px) scale(1.08); }
+.rail [data-action="volume-down"]:not([aria-disabled="true"]):hover svg { transform: translateY(2px) scale(1.08); }
+.rail [data-action="paste"]:not([aria-disabled="true"]):hover svg { transform: translateX(3px); }
+.rail [data-action="copy"]:not([aria-disabled="true"]):hover svg { transform: translateX(-3px); }
+.rail [data-action="disconnect"]:not([aria-disabled="true"]):hover svg { transform: translateY(2px) rotate(10deg); }
+.rail [data-action="lock"]:not([aria-disabled="true"]):hover svg { animation: wiggle 420ms ease; }
+.rail [data-action="update"] svg { animation: nudge 1.6s ease-in-out infinite; }
+.rail button:not([aria-disabled="true"]):active svg { transform: scale(0.88); transition-duration: 90ms; }
+
+@keyframes wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-12deg); } 60% { transform: rotate(10deg); } }
+@keyframes nudge { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(3px); } }
+
+/* result flash */
+.rail button.done { color: var(--live); }
+.rail button.fail { color: var(--warn); }
+.rail button.done svg, .rail button.fail svg { animation: pop 380ms var(--spring); stroke-width: 2.2; }
+@keyframes pop { from { transform: scale(0.4); } to { transform: scale(1); } }
+
+/* status head */
+.rail-head {
+  gap: 7px !important;
+  padding: 12px 4px 10px !important;
+  border-radius: 16px !important;
+  background: linear-gradient(165deg, color-mix(in srgb, var(--live) 16%, transparent), transparent 75%) !important;
+}
+.rail > *, .head-phone { flex-shrink: 0; }
+.head-phone {
+  position: relative;
+  flex: none;
+  width: 20px;
+  height: 34px;
+  border: 2px solid currentColor;
+  border-radius: 7px;
+  transition: transform 280ms var(--spring);
+}
+.head-phone::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  width: 6px;
+  height: 2px;
+  margin-left: -3px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.6;
+}
+.head-dot {
+  position: absolute;
+  top: -6px;
+  right: -7px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--panel);
+  border-radius: 50%;
+  background: var(--line);
+}
+body[data-phase="live"] .head-dot { background: var(--live); animation: pulse 2.4s ease-out infinite; }
+body[data-phase="error"] .head-dot { background: var(--warn); }
+body[data-phase="pairing"] .head-phone, body[data-phase="tunnel"] .head-phone,
+body[data-phase="mounting"] .head-phone, body[data-phase="starting"] .head-phone { animation: breathe 1.4s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: 0.35; } }
+.rail-head:not([aria-disabled="true"]):hover .head-phone { transform: translateY(-2px) rotate(-6deg); }
+.head-text { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.rail-head[aria-disabled="true"] { opacity: 1 !important; color: var(--muted) !important; }
+
+/* compact: icons only (chosen in the rail, or forced on short windows) */
+body.rail-compact .rail { width: 68px; padding: 10px 8px; gap: 10px; }
+body.rail-compact .rail button > span:not(.head-phone):not(.head-text) { display: none; }
+body.rail-compact .rail .head-text { font-size: 9.5px; }
+body.rail-compact .rail button { padding: 10px 2px; }
+body.rail-compact .rail-toggle svg { transform: rotate(180deg); }
+@media (max-height: 900px) and (min-width: 641px) {
+  .rail { width: 68px; padding: 10px 8px; gap: 10px; }
+  .rail button > span:not(.head-phone):not(.head-text) { display: none; }
+  .rail .head-text { font-size: 9.5px; }
+  .rail button { padding: 10px 2px; }
+  .rail-toggle { display: none !important; }
+}
+
+/* very short windows: denser buttons, status moves to the status bar only */
+@media (max-height: 760px) and (min-width: 641px) {
+  .rail { gap: 6px; padding: 8px 6px; }
+  .rail-group { padding: 3px; gap: 1px; }
+  .rail button { min-height: 36px; padding: 6px 2px; }
+  .rail-head { display: none !important; }
+}
+
+/* tooltip */
+.tip {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 360px;
+  padding: 7px 10px;
+  white-space: nowrap;
+  border-radius: 10px;
+  background: var(--ink);
+  color: var(--ground);
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+  box-shadow: var(--shadow);
+  transform: translateY(-50%);
+  animation: tip-in 150ms var(--ease-out);
+}
+.tip::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 50%;
+  margin-top: -5px;
+  border: 5px solid transparent;
+  border-left: 0;
+  border-right-color: var(--ink);
+}
+.tip-keys { display: flex; gap: 3px; }
+.tip-keys kbd {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ground) 18%, transparent);
+  font: 600 11px ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+.tip-note { font-weight: 400; opacity: 0.75; }
+.tip-note:empty, .tip-keys:empty { display: none; }
+@keyframes tip-in { from { opacity: 0; transform: translate(-4px, -50%); } to { opacity: 1; transform: translate(0, -50%); } }
+
+@media (max-width: 640px) {
+  .rail, body.rail-compact .rail { grid-row: auto; min-width: 0; width: auto; flex-direction: row; align-items: center; gap: 6px; padding: 8px; overflow-x: auto; overflow-y: hidden; }
+  .rail-group { flex-direction: row; }
+  .rail button, body.rail-compact .rail button { width: 60px; flex: none; }
+  .rail-head, .rail-toggle { display: none !important; }
+  .tip { display: none; }
+}
+
+.diag {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 5;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.78);
+  color: #d7f5ef;
+  font: 12px/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  pointer-events: none;
+  user-select: text;
 }
 
 @media (prefers-reduced-motion: reduce) {

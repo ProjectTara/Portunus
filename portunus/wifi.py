@@ -60,6 +60,10 @@ def _all_records(udid: str) -> list[Path]:
 
 async def enable(udid: str) -> None:
     """Create the Wi-Fi pair record over the trusted USB connection."""
+    from .srpcheck import pairing_math_ok
+
+    if not pairing_math_ok():
+        raise WifiError("Komponen pairing Wi-Fi di build ini tidak cocok (srptools). Perbarui Portunus ke versi terbaru.")
     if udid not in paired_devices():
         for stale in _all_records(udid):  # an old record without altIRK would be reused as-is
             stale.unlink(missing_ok=True)

@@ -63,6 +63,16 @@ def free_loopback_port() -> int:
         return sock.getsockname()[1]
 
 
+def _where(exc: BaseException) -> str:
+    """Name of the function where an exception was raised, for support logs and messages."""
+    tb = exc.__traceback__
+    name = "?"
+    while tb is not None:
+        name = tb.tb_frame.f_code.co_name
+        tb = tb.tb_next
+    return name
+
+
 def explain(exc: BaseException) -> str:
     """Map library exceptions to an actionable sentence."""
     name = type(exc).__name__
@@ -84,6 +94,14 @@ def explain(exc: BaseException) -> str:
         return table[name]
     if isinstance(exc, (SessionError, wifi.WifiError)):
         return str(exc)
+    if isinstance(exc, AssertionError):
+        where = _where(exc)
+        if "sslpsk" in str(exc):
+            return "Komponen enkripsi Wi-Fi tidak ikut terpasang di build ini. Perbarui Portunus ke versi terbaru."
+        return (
+            f"Pemeriksaan keamanan sambungan gagal ({where}). Buka kunci iPhone, cabut-colok kabel, lalu coba lagi. "
+            "Jika terulang, kirim file %LOCALAPPDATA%\\Portunus\\portunus.log."
+        )
     if "in use" in str(exc).lower():
         return "Kamera atau mikrofon iPhone sedang dipakai aplikasi lain. Tutup aplikasi itu, lalu coba lagi."
     return (

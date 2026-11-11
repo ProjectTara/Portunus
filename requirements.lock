@@ -1463,11 +1463,15 @@ shellingham==1.5.4 \
 six==1.17.0 \
     --hash=sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274 \
     --hash=sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81
-    # via python-dateutil
-srptools==2.0.0 \
-    --hash=sha256:3b5296fde4b70e76443bbeacc641f4e4125c81b6bd20e4e228bba340f00c06c5 \
-    --hash=sha256:566b1cc55964996296b6389294c61f7ee8072f12de800bff4be625f79d930c9b
-    # via pymobiledevice3
+    # via
+    #   python-dateutil
+    #   srptools
+srptools==1.0.1 \
+    --hash=sha256:7fa4337256a1542e8f5bb4bed19e1d9aea98fe5ff9baf76693342a1dd6ac7c96 \
+    --hash=sha256:fccb44c949eb2507ba19f349a3087cb8fed2393014d7f0887b06c3186f19d1e9
+    # via
+    #   -r requirements.txt
+    #   pymobiledevice3
 sslpsk-pmd3==1.0.3 \
     --hash=sha256:01102ab0474b636bb1dae4e9efe5c8b28413d3fc7327b72023b3be6846713eb3 \
     --hash=sha256:0523e08a38e075d01b4501e0437706b1cb8ed842e6553fc4a29814f93b090f86 \

@@ -48,6 +48,7 @@ SCHEMA: dict[str, tuple[Any, Callable[[Any], Any]]] = {
     "reflection": (True, _boolean),
     "autoUpdateCheck": (True, _boolean),
     "allowWifi": (False, _boolean),
+    "railCompact": (False, _boolean),
 }
 
 
