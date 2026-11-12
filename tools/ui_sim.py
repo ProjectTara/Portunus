@@ -184,6 +184,9 @@ def prepare() -> Path:
     (root / "stub.js").write_text(STUB_JS)
     with open(root / "app.js", "a", encoding="utf-8") as js:
         js.write(HOOKS_JS)
+    (root / "frame.html").write_text(
+        '<!doctype html><body style="margin:0"><iframe id="f" src="/" style="border:0;height:780px"></iframe>'
+        '<script>document.getElementById("f").style.width = (new URLSearchParams(location.search).get("w") || 360) + "px"</script></body>')
     html = (root / "index.html").read_text()
     html = html.replace('<script type="module" src="app.js"></script>',
                         '<script src="stub.js"></script>\n  <script type="module" src="app.js"></script>')
@@ -446,6 +449,56 @@ def check_view(driver) -> list[str]:
     return p
 
 
+NARROW_JS = """
+const done = arguments[arguments.length - 1];
+(async () => {
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  const r = document.getElementById('rail'), more = document.getElementById('more-button'), menu = document.getElementById('more-menu');
+  const out = {w: innerWidth, page: document.documentElement.scrollWidth, bar: [r.scrollWidth, r.clientWidth],
+               shown: [...r.querySelectorAll('button')].filter(b => b.offsetParent).map(b => b.dataset.action)};
+  more.click(); await wait(250);
+  out.items = [...menu.querySelectorAll('button')].map(b => b.dataset.run);
+  out.menuInside = menu.getBoundingClientRect().right <= innerWidth && menu.getBoundingClientRect().left >= 0;
+  out.firstFocused = document.activeElement === menu.querySelector('button');
+  menu.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowDown', bubbles: true}));
+  out.arrow = document.activeElement?.dataset.run;
+  menu.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+  out.escClosed = menu.hidden && document.activeElement === more;
+  more.click(); await wait(200);
+  menu.querySelector('[data-run="shot"]').click(); await wait(400);
+  out.ranShot = !document.getElementById('toast').hidden && menu.hidden;
+  done(out);
+})().catch(e => done({error: String(e)}));
+"""
+
+
+def check_narrow(driver, mock: Mock, port: int) -> list[str]:
+    """Real narrow viewports (Firefox windows cannot go below 500px, an iframe can)."""
+    problems = []
+    for width in (320, 360, 400):
+        driver.switch_to.default_content()
+        driver.get(f"http://127.0.0.1:{port}/frame.html?w={width}")
+        time.sleep(1.4)
+        driver.switch_to.frame(driver.find_element("id", "f"))
+        deadline = time.time() + 6
+        while time.time() < deadline and not driver.execute_script("return !document.getElementById('live').hidden"):
+            time.sleep(0.1)
+        r = driver.execute_async_script(NARROW_JS)
+        if "error" in r:
+            problems.append(f"{width}px: {r['error']}")
+            continue
+        if r["page"] > r["w"] or r["bar"][0] > r["bar"][1] + 1:
+            problems.append(f"{width}px meluber: halaman {r['page']}, bar {r['bar']}")
+        if r["shown"] != ["home", "lock", "volume-up", "volume-down", "rotate", "more"]:
+            problems.append(f"{width}px tombol bar salah: {r['shown']}")
+        if r["items"] != ["paste", "copy", "ocr", "shot", "focus", "settings", "disconnect"]:
+            problems.append(f"{width}px isi menu salah: {r['items']}")
+        if not (r["menuInside"] and r["firstFocused"] and r["arrow"] == "copy" and r["escClosed"] and r["ranShot"]):
+            problems.append(f"{width}px menu tidak berfungsi: {r}")
+    driver.switch_to.default_content()
+    return problems
+
+
 def run_tests() -> int:
     root, mock = prepare(), Mock()
     server = serve(root, mock)
@@ -458,6 +511,13 @@ def run_tests() -> int:
         for p in rail_problems:
             print("  GAGAL", p)
         failures.extend(rail_problems)
+        go_live(driver, mock)
+        narrow = check_narrow(driver, mock, server.server_port)
+        print(f"uji jendela sempit 320/360/400px + menu Lainnya: {'semua lolos' if not narrow else 'GAGAL'}")
+        for pr in narrow:
+            print("  GAGAL", pr)
+        failures.extend(narrow)
+        driver.get(f"http://127.0.0.1:{server.server_port}/")
         go_live(driver, mock)
         extra = check_stream(driver)
         view_problems = check_view(driver)

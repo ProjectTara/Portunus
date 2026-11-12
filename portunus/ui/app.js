@@ -757,6 +757,7 @@ const ACTIONS = {
   // picture, which iOS draws clockwise-sideways in the portrait buffer.
   rotate: (e) => rotate(e?.shiftKey ? "right" : "left"),
   focus: () => toggleFocus(),
+  more: () => toggleMore(),
   paste: pasteToPhone,
   copy: copyFromPhone,
   ocr: () => (ui.screen.classList.contains("picking") ? stopPick() : startPick()),
@@ -1149,6 +1150,7 @@ function render() {
   } else if (!live && player.running) {
     player.stop();
     toggleFocus(false);
+    closeMore(false);
     stopPick();
     dropHeldKeys();
     touching = false;
@@ -1206,6 +1208,74 @@ ui.reveal.addEventListener("click", async () => {
     ui.reveal.disabled = false;
   }
 });
+
+// ---------------------------------------------------------------- "more" menu
+// On narrow windows the bar keeps only the essentials; the rest is listed here.
+// Items are built from the rail's own buttons, so labels, icons, shortcuts and
+// actions have one source.
+const MORE_ITEMS = ["paste", "copy", "ocr", "shot", "focus", "|", "settings", "disconnect"];
+const moreMenu = $("#more-menu");
+const moreButton = $("#more-button");
+
+function closeMore(returnFocus) {
+  if (moreMenu.hidden) return;
+  moreMenu.hidden = true;
+  moreButton.setAttribute("aria-expanded", "false");
+  if (returnFocus) moreButton.focus();
+}
+
+function toggleMore() {
+  if (!moreMenu.hidden) { closeMore(true); return; }
+  const items = MORE_ITEMS.map((action) => {
+    if (action === "|") return document.createElement("hr");
+    const source = rail.querySelector(`[data-action="${action}"]`);
+    const item = document.createElement("button");
+    item.type = "button";
+    item.setAttribute("role", "menuitem");
+    item.dataset.run = action;
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    use.setAttribute("href", source?.dataset.icon || source?.querySelector("use")?.getAttribute("href") || "");
+    icon.append(use);
+    const label = document.createElement("span");
+    label.textContent = labelOf(source);
+    item.append(icon, label);
+    const keys = source?.dataset.keys;
+    if (keys) item.append(Object.assign(document.createElement("kbd"), { textContent: keys.replace(/ /g, "+") }));
+    return item;
+  });
+  moreMenu.replaceChildren(...items);
+  moreMenu.hidden = false;
+  moreButton.setAttribute("aria-expanded", "true");
+  const b = moreButton.getBoundingClientRect();
+  const width = moreMenu.offsetWidth;
+  moreMenu.style.top = `${Math.round(b.bottom + 6)}px`;
+  moreMenu.style.left = `${Math.round(Math.max(8, Math.min(b.right - width, innerWidth - width - 8)))}px`;
+  moreMenu.querySelector("button")?.focus();
+}
+
+moreMenu.addEventListener("click", (e) => {
+  const item = e.target.closest("button[data-run]");
+  if (!item) return;
+  closeMore(false);
+  ACTIONS[item.dataset.run]?.(e);
+});
+moreMenu.addEventListener("keydown", (e) => {
+  const items = [...moreMenu.querySelectorAll("button")];
+  const i = items.indexOf(document.activeElement);
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    items[(i + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length].focus();
+  } else if (e.key === "Escape") {
+    e.preventDefault();
+    e.stopPropagation();
+    closeMore(true);
+  }
+});
+document.addEventListener("pointerdown", (e) => {
+  if (!moreMenu.hidden && !moreMenu.contains(e.target) && !moreButton.contains(e.target)) closeMore(false);
+});
+window.addEventListener("resize", () => closeMore(false));
 
 // ---------------------------------------------------------------- focus mode
 // Full screen with only the phone. The rail becomes a drawer that slides in

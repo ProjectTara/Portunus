@@ -26,6 +26,7 @@
     <symbol id="i-cross" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
     <symbol id="i-collapse" viewBox="0 0 24 24"><path d="M14 6l-6 6 6 6"/><path d="M19 6v12"/></symbol>
     <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="18" cy="12" r="1.3"/></symbol>
     <symbol id="i-unplug" viewBox="0 0 24 24"><path d="M9 3v4M15 3v4M7 7h10v4a5 5 0 0 1-10 0z"/><path d="M12 16v5"/></symbol>
   </svg>
 
@@ -48,10 +49,13 @@
       <button type="button" data-action="ocr" data-keys="Ctrl Shift O" data-tip="Baca teks di layar (OCR)"><svg><use href="#i-scan"/></svg><span>Baca</span></button>
       <button type="button" data-action="shot" data-keys="Ctrl Shift S" data-tip="Simpan tangkapan layar"><svg><use href="#i-shot"/></svg><span>Foto</span></button>
     </div>
+    <div class="rail-group rail-more" data-needs-live>
+      <button type="button" data-action="more" id="more-button" aria-haspopup="menu" aria-expanded="false" aria-controls="more-menu" data-tip="Lainnya"><svg><use href="#i-more"/></svg><span>Lainnya</span></button>
+    </div>
     <div class="rail-group rail-end">
       <button type="button" data-action="update" id="update-button" hidden><svg><use href="#i-update"/></svg><span>Perbarui</span></button>
       <button type="button" data-action="settings" data-tip="Pengaturan"><svg><use href="#i-gear"/></svg><span>Atur</span></button>
-      <button type="button" data-action="focus" data-needs-live data-keys="F11" data-tip="Mode fokus: layar penuh, sidebar di tepi kiri"><svg><use href="#i-expand"/></svg><span>Fokus</span></button>
+      <button type="button" data-action="focus" data-needs-live data-keys="F11" data-tip="Mode fokus (layar penuh)"><svg><use href="#i-expand"/></svg><span>Fokus</span></button>
       <button type="button" data-action="disconnect" data-needs-live data-tip="Putuskan sambungan"><svg><use href="#i-unplug"/></svg><span>Putus</span></button>
       <button type="button" data-action="rail-toggle" class="rail-toggle" id="rail-toggle"><svg><use href="#i-collapse"/></svg><span>Ciut</span></button>
     </div>
@@ -109,6 +113,8 @@
     <span class="fps" id="fps"></span>
   </footer>
 
+  <div class="more-menu" id="more-menu" role="menu" aria-label="Aksi lainnya" hidden></div>
+
   <div class="tip" id="tip" role="tooltip" hidden><span class="tip-label"></span><span class="tip-keys"></span><span class="tip-note"></span></div>
 
   <dialog id="keys" aria-labelledby="keys-title">
@@ -149,6 +155,15 @@
           <select id="audio-device"></select>
           <button type="button" id="audio-toggle">Putar di PC</button>
         </div>
+        <details class="audio-help">
+          <summary>Suara terlalu kecil?</summary>
+          <ol>
+            <li>Naikkan volume iPhone: tahan tombol Keras di sidebar.</li>
+            <li>Di iPhone: Settings, Bluetooth, ketuk (i) di nama PC, lalu Device Type: Speaker.</li>
+            <li>Di iPhone: Settings, Sounds &amp; Haptics, Headphone Safety, matikan Reduce Loud Audio.</li>
+            <li>Di PC: Settings, System, Sound, Volume mixer, naikkan volume iPhone ke 100.</li>
+          </ol>
+        </details>
       </fieldset>
       <fieldset class="row">
         <legend>Sambungan Wi-Fi (uji coba)</legend>

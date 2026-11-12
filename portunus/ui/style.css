@@ -55,7 +55,7 @@ html, body { height: 100%; margin: 0; }
 
 body {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr);
   grid-template-rows: 1fr auto;
   background: var(--ground);
   color: var(--ink);
@@ -290,13 +290,17 @@ fieldset legend { padding: 0; }
 .audio-controls { display: flex; gap: 8px; }
 .audio-controls select { flex: 1; min-width: 0; }
 .actions { display: flex; justify-content: flex-end; }
+.audio-help { margin-top: 6px; font-size: 13px; color: var(--muted); }
+.audio-help summary { cursor: pointer; color: var(--ink); }
+.audio-help ol { margin: 6px 0 0; padding-left: 1.3em; }
+.audio-help li { margin: 3px 0; }
 .check-inline { display: flex; gap: 10px; align-items: flex-start; margin-top: 4px; }
 .check-inline input { margin-top: 4px; }
 #update-button { color: var(--live); font-weight: 600; }
 
 /* ---- responsive & motion ----------------------------------------------- */
 @media (max-width: 640px) {
-  body { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
+  body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto; }
   .rail { grid-row: auto; width: auto; flex-direction: row; align-items: center; gap: 6px; padding: 8px; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--line); }
   .rail-group { flex-direction: row; }
   .rail-end { margin-top: 0; margin-left: auto; }
@@ -678,7 +682,9 @@ body[data-phase="live"] .rail button[data-needs-live] {
   background: color-mix(in srgb, var(--ink) 88%, transparent);
   color: var(--ground);
   font-size: 13px;
-  white-space: nowrap;
+  width: max-content;
+  max-width: calc(100% - 24px);   /* wraps on narrow windows instead of widening the page */
+  text-align: center;
   pointer-events: none;
   animation: toast-in var(--dur-in) var(--ease-out);
 }
@@ -691,7 +697,7 @@ body[data-phase="live"] .rail button[data-needs-live] {
 }
 
 /* ---- focus mode: full screen, phone only, rail as an edge drawer --------- */
-body.focus { grid-template-columns: 1fr; }
+body.focus { grid-template-columns: minmax(0, 1fr); }
 body.focus .rail {
   position: fixed;
   left: 0;
@@ -709,12 +715,83 @@ body.focus .live { padding: 8px; }
 /* ---- shortcut sheet ------------------------------------------------------- */
 .keys-box { padding: 20px 22px; }
 .keys-box h2 { margin: 0 0 12px; font-size: 19px; font-weight: 600; }
-.keys-list { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 0 0 16px; }
+.keys-list { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 16px; margin: 0 0 16px; }
 .keys-list dt { display: flex; gap: 3px; white-space: nowrap; }
 .keys-list kbd { background: color-mix(in srgb, var(--ink) 10%, transparent); color: var(--ink); }
 .keys-list dd { margin: 0; color: var(--muted); }
 .actions { gap: 12px; align-items: center; }
 .actions .link { margin-right: auto; }
+
+/* ---- narrow windows: one compact icon bar + "more" menu ------------------
+   Below 640px the rail becomes a single 48px bar with the five actions used
+   most (home, lock, volume, rotate). Everything else lives in the "more"
+   menu, so the bar never scrolls and never widens the page. */
+.rail-more, .more-menu[hidden] { display: none; }
+@media (max-width: 640px) {
+  body { grid-template-rows: auto 1fr auto; }
+  .rail, body.rail-compact .rail {
+    grid-row: auto;
+    min-width: 0;
+    width: auto;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 8px;
+    overflow: hidden;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .rail-group { flex-direction: row; gap: 2px; padding: 0; background: transparent; }
+  .rail-end { margin: 0; }
+  .rail button, body.rail-compact .rail button {
+    width: 40px;
+    min-height: 40px;
+    padding: 0;
+    flex: none;
+    justify-content: center;
+  }
+  .rail button > span:not(.head-phone):not(.head-text) { display: none; }
+  /* only the essentials stay in the bar */
+  .rail [data-action="paste"], .rail [data-action="copy"], .rail [data-action="ocr"], .rail [data-action="shot"],
+  .rail [data-action="focus"], .rail [data-action="disconnect"], .rail-toggle, .rail-head { display: none !important; }
+  body[data-phase="live"] .rail [data-action="settings"] { display: none !important; }
+  body[data-phase="live"] .rail-more { display: flex; }
+  .rail-indicator { display: none; }
+  .tip { display: none !important; }
+}
+
+.more-menu {
+  position: fixed;
+  z-index: 70;
+  min-width: 220px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  animation: pop-in var(--dur-in) var(--ease-out);
+}
+.more-menu button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.more-menu button:hover, .more-menu button:focus-visible { background: color-mix(in srgb, var(--live) 13%, transparent); }
+.more-menu svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.more-menu kbd { margin-left: auto; color: var(--muted); font: 600 11px ui-monospace, "Cascadia Mono", Consolas, monospace; }
+.more-menu hr { margin: 4px 6px; border: 0; border-top: 1px solid var(--line); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
