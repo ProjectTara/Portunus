@@ -28,20 +28,24 @@ def ratio(a: str, b: str) -> float:
 
 
 class ContrastTests(unittest.TestCase):
-    PAIRS = [("ink", "ground", 4.5), ("ink", "panel", 4.5), ("muted", "ground", 4.5), ("muted", "panel", 4.5),
-             ("live", "ground", 3.0), ("live", "panel", 3.0), ("edge", "ground", 3.0), ("edge", "panel", 3.0)]
+    SURFACES = ("ground", "panel", "surface", "elevated")
+    PAIRS = [(fg, bg, need) for fg, need in (("ink", 4.5), ("muted", 4.5), ("live", 3.0), ("edge", 3.0))
+             for bg in ("ground", "panel", "surface", "elevated")] + [("on-live", "live", 4.5)]
 
     def check(self, theme: dict[str, str], name: str) -> None:
         for fg, bg, need in self.PAIRS:
             with self.subTest(theme=name, pair=f"{fg}/{bg}"):
                 self.assertGreaterEqual(ratio(theme[fg], theme[bg]), need)
 
-    def test_light(self):
-        self.check(tokens(":root {"), "terang")
+    def test_dark_default(self):
+        self.check(tokens(":root {"), "gelap")
 
-    def test_dark(self):
-        light = tokens(":root {")
-        self.check({**light, **tokens(':root[data-theme="dark"]')}, "gelap")
+    def test_light(self):
+        self.check({**tokens(":root {"), **tokens(':root[data-theme="light"]')}, "terang")
+
+    def test_system_light_matches_light(self):
+        # "Ikuti Windows" on a light OS must use exactly the light palette
+        self.assertEqual(tokens("@media (prefers-color-scheme: light)"), tokens(':root[data-theme="light"]'))
 
 
 if __name__ == "__main__":

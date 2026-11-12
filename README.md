@@ -168,6 +168,10 @@ Test memeriksa pemeriksaan keamanan (termasuk body besar tanpa izin, header lamb
 - Mirroring layar membutuhkan iOS 27 atau lebih baru.
 - Saat layar bergerak cepat, iPhone kadang menurunkan resolusi sebentar. Ini keputusan encoder di iPhone.
 
+## Pihak ketiga
+
+Ikon dari [Lucide](https://lucide.dev) v1.63.0 (lisensi ISC), disalin sebagai SVG ke `portunus/ui/index.html`.
+
 ## Lisensi
 
 GPL-3.0. Portunus dibangun di atas [pymobiledevice3](https://github.com/doronz88/pymobiledevice3), yang juga berlisensi GPL-3.0.

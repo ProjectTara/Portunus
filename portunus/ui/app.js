@@ -106,6 +106,7 @@ class Player {
     this.abort = new AbortController();
     this.fpsTimer = setInterval(() => {
       this.fpsNow = this.frames;
+      paintStatus();
       ui.fps.textContent = this.frames ? `${this.frames} fps` : "";
       this.frames = 0;
     }, 1000);
@@ -425,18 +426,22 @@ const player = new Player(ui.canvas);
 // flex container Chromium may clamp one side without the other and squash
 // the picture. This keeps the frame's exact aspect ratio at any window size.
 const REFLECTION_SHARE = 0.8; // canvas height share when the reflection shows
+const FRAME = 16; // device frame: 7px bezel + 1px border on each side
+const phoneArea = $("#phone-area");
+const phoneFrame = $("#phone-frame");
 function fitCanvas() {
-  const box = ui.screen.getBoundingClientRect();
+  const box = phoneArea.getBoundingClientRect();
   if (!box.width || !box.height) return;
-  const maxH = box.height * (settings.reflection ? REFLECTION_SHARE : 1);
-  const scale = Math.min(box.width / ui.canvas.width, maxH / ui.canvas.height);
+  const availW = box.width - FRAME;
+  const availH = (box.height - FRAME) * (settings.reflection ? REFLECTION_SHARE : 1);
+  const scale = Math.min(availW / ui.canvas.width, availH / ui.canvas.height);
   const w = Math.max(1, Math.floor(ui.canvas.width * scale));
   const h = Math.max(1, Math.floor(ui.canvas.height * scale));
   ui.canvas.style.width = `${w}px`;
   ui.canvas.style.height = `${h}px`;
-  ui.canvas.style.setProperty("--radius", `${Math.round(Math.min(w, h) * 0.11)}px`);
+  phoneFrame.style.setProperty("--radius", `${Math.round(Math.min(w, h) * 0.11)}px`);
 }
-new ResizeObserver(fitCanvas).observe(ui.screen);
+new ResizeObserver(fitCanvas).observe(phoneArea);
 
 // ---------------------------------------------------------------- touch
 function toHid(clientX, clientY) {
@@ -758,6 +763,11 @@ const ACTIONS = {
   rotate: (e) => rotate(e?.shiftKey ? "right" : "left"),
   focus: () => toggleFocus(),
   more: () => toggleMore(),
+  keys: () => openKeys(),
+  reflect: async () => {
+    try { settings = await api("/api/settings", { reflection: !settings.reflection }); } catch { settings.reflection = !settings.reflection; }
+    applySettings();
+  },
   paste: pasteToPhone,
   copy: copyFromPhone,
   ocr: () => (ui.screen.classList.contains("picking") ? stopPick() : startPick()),
@@ -815,9 +825,21 @@ function showTip(button) {
   tip.querySelector(".tip-note").textContent = unavailable(button)
     ? (button.dataset.action === "focus-screen" ? "" : "Sambungkan iPhone dulu") : "";
   const b = button.getBoundingClientRect();
-  tip.style.left = `${Math.round(b.right + 10)}px`;
-  tip.style.top = `${Math.round(b.top + b.height / 2)}px`;
+  const place = button.closest("#topbar") ? "below" : button.closest("#dock") ? "above" : "right";
+  tip.classList.toggle("below", place === "below");
+  tip.classList.toggle("above", place === "above");
+  if (place === "right") {
+    tip.style.left = `${Math.round(b.right + 10)}px`;
+    tip.style.top = `${Math.round(b.top + b.height / 2)}px`;
+  } else {
+    tip.style.top = `${Math.round(place === "below" ? b.bottom + 8 : b.top - 8)}px`;
+    tip.style.left = `${Math.round(b.left + b.width / 2)}px`;
+  }
   tip.hidden = false;
+  if (place !== "right") { // keep inside the window
+    const t = tip.getBoundingClientRect();
+    if (t.right > innerWidth - 6) tip.style.left = `${Math.round(innerWidth - 6 - t.width / 2)}px`;
+  }
 }
 
 function hideTip() {
@@ -839,6 +861,24 @@ rail.addEventListener("pointerover", (e) => {
   if (button && rail.contains(button)) hoverButton(button, false);
 });
 rail.addEventListener("pointerleave", () => { hovered = null; moveIndicator(null); hideTip(); });
+
+// Header and dock: same actions and tooltips as the rail, no sliding highlight.
+for (const bar of [$("#topbar"), $("#dock")]) {
+  bar.addEventListener("pointerover", (e) => {
+    const button = e.target.closest("button[data-tip]");
+    if (!button || e.pointerType === "touch") return;
+    clearTimeout(tipTimer);
+    if (!tip.hidden) showTip(button);
+    else tipTimer = setTimeout(() => showTip(button), 320);
+  });
+  bar.addEventListener("pointerleave", hideTip);
+  bar.addEventListener("click", (e) => {
+    const button = e.target.closest("button[data-action]");
+    if (!button || unavailable(button)) return;
+    hideTip();
+    ACTIONS[button.dataset.action]?.(e);
+  });
+}
 
 // The rail changes size (collapse, window resize): put the highlight back on
 // the button it belongs to instead of leaving it where that button used to be.
@@ -882,8 +922,8 @@ rail.addEventListener("click", (e) => {
   ACTIONS[button.dataset.action]?.(e);
 });
 
-// Right-click on Putar turns the other way.
-rail.addEventListener("contextmenu", (e) => {
+// Right-click on Putar turns the other way (wherever the button lives).
+document.addEventListener("contextmenu", (e) => {
   const button = e.target.closest('button[data-action="rotate"]');
   if (!button) return;
   e.preventDefault();
@@ -892,7 +932,7 @@ rail.addEventListener("contextmenu", (e) => {
 
 // A finished action briefly turns its icon into a check (or a cross).
 function flash(action, ok) {
-  const button = rail.querySelector(`[data-action="${action}"]`);
+  const button = document.querySelector(`#rail [data-action="${action}"], #dock [data-action="${action}"]`);
   const use = button?.querySelector("use");
   if (!use) return;
   if (!button.dataset.icon) button.dataset.icon = use.getAttribute("href");
@@ -924,14 +964,14 @@ function paintRail(live) {
   const compact = Boolean(settings.railCompact);
   toggle.setAttribute("aria-label", compact ? "Lebarkan sidebar" : "Ciutkan sidebar");
   toggle.dataset.tip = compact ? "Lebarkan sidebar" : "Ciutkan sidebar";
-  toggle.querySelector("span").textContent = compact ? "Lebar" : "Ciut";
+  toggle.querySelector("span").textContent = compact ? "Lebarkan" : "Ciutkan";
 }
 
 // ---------------------------------------------------------------- settings
 function applySettings() {
-  if (settings.theme === "system") delete document.documentElement.dataset.theme;
-  else document.documentElement.dataset.theme = settings.theme;
+  document.documentElement.dataset.theme = settings.theme;
   document.body.classList.toggle("reflect", settings.reflection);
+  document.querySelector('#dock [data-action="reflect"]')?.setAttribute("aria-pressed", String(Boolean(settings.reflection)));
   document.body.classList.toggle("rail-compact", Boolean(settings.railCompact));
   if (typeof paintRail === "function" && rail) paintRail(state.phase === "live");
   fitCanvas();
@@ -1136,6 +1176,26 @@ function renderProgress() {
   });
 }
 
+// Header pill and sidebar info panel: existing state, presented.
+function paintStatus() {
+  const live = state.phase === "live";
+  const busy = BUSY.includes(state.phase);
+  const wifi = state.device?.transport === "wifi";
+  const name = live ? (state.device?.name || "iPhone") : "";
+  $("#conn-text").textContent = live ? `Tersambung lewat ${wifi ? "Wi-Fi" : "USB"}` : busy ? "Menghubungkan"
+    : state.phase === "error" ? "Gagal tersambung" : "Belum tersambung";
+  $("#conn-device").textContent = name;
+  const via = $("#conn-via");
+  via.toggleAttribute("hidden", !live); // SVG elements have no .hidden property
+  via.querySelector("use").setAttribute("href", wifi ? "#i-wifi" : "#i-usb");
+  const status = $("#info-status");
+  status.lastChild.textContent = live ? (wifi ? "Wi-Fi" : "USB") : busy ? "Menghubungkan" : state.phase === "error" ? "Gagal" : "Offline";
+  $("#info-device").textContent = name || "-";
+  const s = player.streamSize;
+  $("#info-res").textContent = live ? (s ? `${s.width} x ${s.height}` : `${player.frameW} x ${player.frameH}`) : "-";
+  $("#info-fps").textContent = live ? String(player.fpsNow ?? 0) : "-";
+}
+
 function render() {
   const live = state.phase === "live";
   document.body.dataset.phase = state.phase;
@@ -1159,6 +1219,7 @@ function render() {
     ui.hint.textContent = "";
   }
 
+  paintStatus();
   const device = state.device?.name || "iPhone";
   const via = state.device?.transport === "wifi" ? "Wi-Fi" : "USB";
   ui.statusText.textContent = live ? `${device} tersambung lewat ${via}`
@@ -1213,7 +1274,7 @@ ui.reveal.addEventListener("click", async () => {
 // On narrow windows the bar keeps only the essentials; the rest is listed here.
 // Items are built from the rail's own buttons, so labels, icons, shortcuts and
 // actions have one source.
-const MORE_ITEMS = ["paste", "copy", "ocr", "shot", "focus", "|", "settings", "disconnect"];
+const MORE_ITEMS = ["paste", "copy", "ocr", "shot", "|", "disconnect"];
 const moreMenu = $("#more-menu");
 const moreButton = $("#more-button");
 
@@ -1284,6 +1345,7 @@ function toggleFocus(force) {
   const on = force ?? !document.body.classList.contains("focus");
   if (on === document.body.classList.contains("focus")) return;
   document.body.classList.toggle("focus", on);
+  document.querySelector('#dock [data-action="focus"]')?.setAttribute("aria-pressed", String(on));
   document.body.classList.remove("rail-peek");
   bridge?.set_fullscreen?.(on);
   if (on) toast("Mode fokus. Arahkan kursor ke tepi kiri untuk kontrol, F11 untuk keluar.", false, 3200);

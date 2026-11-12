@@ -42,7 +42,7 @@ def _int_range(low: int, high: int) -> Callable[[Any], int]:
 
 # key -> (default, validator)
 SCHEMA: dict[str, tuple[Any, Callable[[Any], Any]]] = {
-    "theme": ("system", _choice("system", "light", "dark")),
+    "theme": ("dark", _choice("system", "light", "dark")),
     "ctrlAsCmd": (True, _boolean),
     "scrollSpeed": (100, _int_range(40, 250)),
     "reflection": (True, _boolean),

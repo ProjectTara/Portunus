@@ -285,7 +285,7 @@ class UiStaticTests(unittest.TestCase):
         js = (root / "app.js").read_text()
         css = (root / "style.css").read_text()
         share = float(re.search(r"REFLECTION_SHARE = ([0-9.]+)", js).group(1))
-        block = css[css.index("body.reflect #canvas {"):]
+        block = css[css.index("body.reflect .phone-frame {"):]  # the reflection is on the device frame
         visible = 1 - int(re.search(r"transparent (\d+)%", block).group(1)) / 100
         # space under a centered canvas must hold the visible part of the reflection
         self.assertLessEqual(share * visible, (1 - share) / 2)

@@ -37,7 +37,9 @@ DEVICES = [  # name, width, height (portrait pixels)
     ("Galaxy S24 Ultra (rasio Android)", 1440, 3120),
     ("Galaxy Z Fold (rasio Android)", 1812, 2176),
 ]
-WINDOWS = [(1120, 900), (800, 700), (560, 640), (1920, 1080), (1400, 600), (700, 1000)]
+# viewports = window sizes minus the Windows title bar (~32px), incl. the
+# resolutions the design brief names: 1280x720, 1366x768, 1920x1080, 2560x1440
+WINDOWS = [(1280, 688), (1366, 736), (1920, 1048), (2560, 1408), (1120, 900), (800, 700), (560, 640), (1400, 600)]
 
 STUB_JS = """
 window.pywebview = { api: {
@@ -212,12 +214,15 @@ def set_viewport(driver, w: int, h: int) -> None:
 
 
 MEASURE = """
-const c = document.getElementById('canvas'), s = document.getElementById('screen');
+const c = document.getElementById('canvas'), s = document.getElementById('phone-area'), f = document.getElementById('phone-frame');
 const r = c.getBoundingClientRect(), b = s.getBoundingClientRect();
 const tl = window.__ui.toHid(r.left + 0.5, r.top + 0.5), br = window.__ui.toHid(r.right - 0.5, r.bottom - 0.5);
 return {cw: r.width, ch: r.height, cl: r.left, ct: r.top, cr: r.right, cb: r.bottom,
         sl: b.left, st: b.top, sr: b.right, sb: b.bottom, bw: c.width, bh: c.height,
         tl, br, scrollX: document.documentElement.scrollWidth > innerWidth,
+        fb: f.getBoundingClientRect().bottom, fh: f.getBoundingClientRect().height,
+        dockOk: (() => { const d = document.getElementById('dock').getBoundingClientRect(), fr = f.getBoundingClientRect();
+                         return d.height > 0 && d.top >= fr.bottom - 1 && d.bottom <= innerHeight; })(),
         railScroll: (() => { const r = document.querySelector('.rail');
           return getComputedStyle(r).flexDirection === 'column' && r.scrollHeight > r.clientHeight + 1; })()};
 """
@@ -252,10 +257,20 @@ def check_rail(driver, mock: Mock) -> list[str]:
     set_viewport(driver, 1120, 1000)
     mock.state.update(phase="idle", device={})
     time.sleep(1.3)
-    hidden = driver.execute_script("""return ['home','lock','shot','rotate','focus','disconnect']
-        .map(a => document.querySelector(`[data-action="${a}"]`).getBoundingClientRect().height)""")
-    if any(h > 0 for h in hidden):
-        problems.append(f"kontrol iPhone masih tampil saat offline: {hidden}")
+    offline = driver.execute_script("""return ['home','lock','shot','paste','disconnect']
+        .map(a => document.querySelector(`#rail [data-action="${a}"]`))
+        .map(b => [b.getBoundingClientRect().height > 0, b.getAttribute('aria-disabled')])""")
+    if any(not shown or dis != "true" for shown, dis in offline):
+        problems.append(f"kontrol offline harus tampil nonaktif: {offline}")
+    lock = driver.find_element(By.CSS_SELECTOR, '#rail [data-action="lock"]')
+    ActionChains(driver).move_to_element(lock).perform()
+    time.sleep(0.75)
+    st = driver.execute_script(RAIL_STATE, lock)
+    if not (st["tip"] and st["label"] == "Kunci iPhone" and st["note"] == "Sambungkan iPhone dulu"):
+        problems.append(f"tooltip tombol nonaktif salah: {st}")
+    head = driver.execute_script("return [document.getElementById('conn-text').textContent, document.getElementById('info-status').textContent]")
+    if head != ["Belum tersambung", "Offline"]:
+        problems.append(f"status offline salah: {head}")
     go_live(driver, mock)
     time.sleep(0.5)
     if driver.execute_script("return document.getElementById('coach').hidden"):
@@ -263,9 +278,17 @@ def check_rail(driver, mock: Mock) -> list[str]:
     time.sleep(5.6)
     if not driver.execute_script("return document.getElementById('coach').hidden"):
         problems.append("coach mark tidak memudar")
-    for action, label, keys in [("home", "Beranda", ["Ctrl", "Shift", "H"]), ("rotate", "Putar tampilan (Shift-klik: arah sebaliknya)", ["Ctrl", "Shift", "]"]),
-                                ("shot", "Simpan tangkapan layar", ["Ctrl", "Shift", "S"]), ("settings", "Pengaturan", [])]:
-        btn = driver.find_element(By.CSS_SELECTOR, f'[data-action="{action}"]')
+    mock.state["device"] = {"name": "Ripan", "transport": "wifi"}
+    time.sleep(1.2)
+    head = driver.execute_script("""return [document.getElementById('conn-text').textContent, document.getElementById('conn-device').textContent,
+        document.getElementById('conn-via').getBoundingClientRect().width > 0 ? document.querySelector('#conn-via use').getAttribute('href') : 'TIDAK TAMPIL',
+        document.getElementById('info-device').textContent,
+        document.getElementById('info-res').textContent]""")
+    if head[:4] != ["Tersambung lewat Wi-Fi", "Ripan", "#i-wifi", "Ripan"] or "x" not in head[4]:
+        problems.append(f"status tersambung salah: {head}")
+    for action, label, keys in [("home", "Beranda", ["Ctrl", "Shift", "H"]), ("lock", "Kunci iPhone", ["Ctrl", "Shift", "L"]),
+                                ("shot", "Simpan tangkapan layar", ["Ctrl", "Shift", "S"]), ("paste", "Tempel teks PC ke iPhone", ["Ctrl", "Shift", "V"])]:
+        btn = driver.find_element(By.CSS_SELECTOR, f'#rail [data-action="{action}"]')
         ActionChains(driver).move_to_element(btn).perform()
         time.sleep(0.75)
         st = driver.execute_script(RAIL_STATE, btn)
@@ -273,7 +296,15 @@ def check_rail(driver, mock: Mock) -> list[str]:
             problems.append(f"sorotan tidak menempel di {action}: {st}")
         if not st["tip"] or st["label"] != label or st["keys"] != keys or st["note"]:
             problems.append(f"tooltip {action} salah: {st}")
-    shot = driver.find_element(By.CSS_SELECTOR, '[data-action="shot"]')
+    for sel, label, below in (('#topbar [data-action="settings"]', "Pengaturan", True), ('#dock [data-action="rotate"]', "Putar tampilan (Shift-klik: arah sebaliknya)", False)):
+        btn = driver.find_element(By.CSS_SELECTOR, sel)
+        ActionChains(driver).move_to_element(btn).perform()
+        time.sleep(0.75)
+        t = driver.execute_script("""const t = document.getElementById('tip'), b = arguments[0].getBoundingClientRect(), r = t.getBoundingClientRect();
+            return [!t.hidden, t.querySelector('.tip-label').textContent, r.top >= b.bottom, r.bottom <= b.top]""", btn)
+        if not (t[0] and t[1] == label and (t[2] if below else t[3])):
+            problems.append(f"tooltip {sel} salah: {t}")
+    shot = driver.find_element(By.CSS_SELECTOR, '#rail [data-action="shot"]')
     shot.click()
     time.sleep(0.4)
     icon = driver.execute_script("return [arguments[0].classList.contains('done'), arguments[0].querySelector('use').getAttribute('href')]", shot)
@@ -290,7 +321,7 @@ def check_rail(driver, mock: Mock) -> list[str]:
     st = driver.execute_script(RAIL_STATE, toggle)
     if st["on"] and max(st["dx"], st["dy"]) > 2:
         problems.append(f"sorotan tertinggal setelah sidebar diciutkan: {st}")
-    if not (wide > 90 and narrow < 72 and mock.settings.get("railCompact") is True):
+    if not (wide > 200 and narrow < 72 and mock.settings.get("railCompact") is True):
         problems.append(f"ciutkan sidebar gagal: {wide} -> {narrow}, setelan {mock.settings.get('railCompact')}")
     driver.find_element(By.CSS_SELECTOR, '[data-action="rail-toggle"]').click()
     time.sleep(0.3)
@@ -385,7 +416,7 @@ const done = arguments[arguments.length - 1];
 (async () => {
   const wait = (ms) => new Promise(r => setTimeout(r, ms));
   const c = document.getElementById('canvas'), rail = document.getElementById('rail');
-  const rot = document.querySelector('[data-action="rotate"]');
+  const rot = document.querySelector('#dock [data-action="rotate"]');
   const corners = () => { const b = c.getBoundingClientRect();
     return [window.__ui.toHid(b.left + 0.5, b.top + 0.5), window.__ui.toHid(b.right - 0.5, b.bottom - 0.5)]; };
   const out = {};
@@ -402,6 +433,7 @@ const done = arguments[arguments.length - 1];
   const before = c.getBoundingClientRect().height;
   document.dispatchEvent(new KeyboardEvent('keydown', {code: 'F11', key: 'F11', bubbles: true})); await wait(450);
   out.focus = {on: document.body.classList.contains('focus'), railRight: rail.getBoundingClientRect().right,
+               header: getComputedStyle(document.getElementById('topbar')).display,
                grew: c.getBoundingClientRect().height > before};
   document.dispatchEvent(new PointerEvent('pointermove', {clientX: 3, clientY: 300, bubbles: true})); await wait(350);
   out.peek = rail.getBoundingClientRect().left;
@@ -438,7 +470,7 @@ def check_view(driver) -> list[str]:
     if (w, h, o) != (2556, 1179, 90) or not (near(tl, 0, 65535) and near(br, 65535, 0)):
         p.append(f"klik kanan (searah jarum jam) salah: {r['r270']}")
     f = r["focus"]
-    if not (f["on"] and f["railRight"] <= 1 and f["grew"]):
+    if not (f["on"] and f["railRight"] <= 1 and f["grew"] and f["header"] == "none"):
         p.append(f"mode fokus salah: {f}")
     if abs(r["peek"]) > 1:
         p.append(f"laci sidebar tidak muncul di tepi kiri: left={r['peek']}")
@@ -489,9 +521,9 @@ def check_narrow(driver, mock: Mock, port: int) -> list[str]:
             continue
         if r["page"] > r["w"] or r["bar"][0] > r["bar"][1] + 1:
             problems.append(f"{width}px meluber: halaman {r['page']}, bar {r['bar']}")
-        if r["shown"] != ["home", "lock", "volume-up", "volume-down", "rotate", "more"]:
+        if r["shown"] != ["home", "lock", "volume-up", "volume-down", "more"]:
             problems.append(f"{width}px tombol bar salah: {r['shown']}")
-        if r["items"] != ["paste", "copy", "ocr", "shot", "focus", "settings", "disconnect"]:
+        if r["items"] != ["paste", "copy", "ocr", "shot", "disconnect"]:
             problems.append(f"{width}px isi menu salah: {r['items']}")
         if not (r["menuInside"] and r["firstFocused"] and r["arrow"] == "copy" and r["escClosed"] and r["ranShot"]):
             problems.append(f"{width}px menu tidak berfungsi: {r}")
@@ -552,7 +584,9 @@ def run_tests() -> int:
                             problems.append(f"rasio meleset {err:.1%}")
                         if m["cl"] < m["sl"] - 1 or m["cr"] > m["sr"] + 1 or m["ct"] < m["st"] - 1 or m["cb"] > m["sb"] + 1:
                             problems.append("keluar area")
-                        if reflect and m["cb"] + 6 + 0.10 * m["ch"] > m["sb"] + 24 + 1:
+                        if not m["dockOk"]:
+                            problems.append("bar kontrol menimpa ponsel atau keluar layar")
+                        if reflect and m["fb"] + 6 + 0.10 * m["fh"] > m["sb"] + 2:
                             problems.append("pantulan meluber")
                         if max(m["tl"]["x"], m["tl"]["y"]) > 700 or min(m["br"]["x"], m["br"]["y"]) < 64835:
                             problems.append(f"sentuhan sudut meleset {m['tl']} {m['br']}")
